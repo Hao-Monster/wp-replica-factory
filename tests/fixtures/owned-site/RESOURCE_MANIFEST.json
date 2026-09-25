@@ -187,6 +187,17 @@
       "sha256": "2b63464bf71fe30d46983727e40f942007d5cee53db2701a640fe8fc04d1e540",
       "source": "repository fixture",
       "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "STATE_MATRIX.json",
+      "sha256": "f1f6e0f3b7d4a8eea61490088baff003e7357129c154744a42187e9f66a4645e",
+      "source": "repository fixture",
+      "type": "data"
     }
   ]
 }

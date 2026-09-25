@@ -50,3 +50,11 @@ py -3 -X utf8 scripts/fixture_site.py test
 - 页面请求外部 origin、路径穿越、重复商品 ID、损坏资源或缺状态均应使检查失败。
 
 本 Issue 不实现通用采集器、视觉评估器、WooCommerce 预览闭环、生产发布、支付、订单、邮件或 webhook。下游使用者为 Issue #2、#3、#4。
+
+## 运行副本与完整性契约
+
+`seed`、`serve`、`health`、`reset` 都必须指向同一个已拥有的运行目录。默认目录是 `.replica/owned-site`；测试沙箱必须由测试创建 `.fixture-sandbox` 标记后再创建专用子目录。reset 不递归删除传入目录，只替换受管理的 `products.json` 和 `resource-manifest.json`，并拒绝仓库、源 fixture、`.git`、用户目录、磁盘根目录、符号链接/junction 和未标记目录。
+
+`RESOURCE_MANIFEST.json` 和 `STATE_MATRIX.json` 是版本化期望值。seed、health 和 test 都核对资源路径、SHA-256、商品图片关联、页面状态 ID 和运行副本清单；不会自动更新期望值。health 分开报告 fixture 完整性、运行数据 SHA-256 和 HTTP 检查。
+
+浏览器 test 的 `run_1` 与 `run_2` 使用不同运行目录和新浏览器上下文，分别输出实际观察和语义 SHA-256，并报告比较字段。实际观察包括 DOM 商品 ID/顺序、元素边界列数、每张图片解码、字体加载状态和使用证据、懒加载背景的实际渲染、全部筛选状态、菜单状态与被阻断的外部请求。状态摘要一致不代表逐像素一致。

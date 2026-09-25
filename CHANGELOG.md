@@ -24,3 +24,5 @@
 
 - Added a local-only owned fixture site with fixed product data, resource manifest, lifecycle commands, responsive grid, lazy background/SVG state, and menu/filter states.
 - Added Playwright browser acceptance and negative lifecycle tests; CI runs the locked fixture browser job without external site or production access.
+- Hardened fixture run-directory ownership and reset boundaries; runtime pages now read the managed seed copy.
+- Made versioned resource/state manifests authoritative and expanded browser observations and negative tests.

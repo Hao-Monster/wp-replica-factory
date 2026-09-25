@@ -44,6 +44,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Run fixture lifecycle and browser acceptance
         run: |
+          set -o pipefail
           python -X utf8 scripts/fixture_site.py seed
           python -X utf8 scripts/fixture_site.py test | tee fixture-test-output.json
       - name: Run fixture unit and control tests
