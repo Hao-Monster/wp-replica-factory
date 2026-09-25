@@ -65,7 +65,11 @@ def verify_fixture() -> dict:
     expected = json.loads(expected_path.read_text(encoding='utf-8'))
     actual = calculated_manifest()
     if expected != actual:
-        raise RuntimeError('fixture resource manifest mismatch; restore or review versioned expected hashes')
+        expected_by_path = {x['path']: x['sha256'] for x in expected.get('resources', [])}
+        actual_by_path = {x['path']: x['sha256'] for x in actual['resources']}
+        mismatches = [p for p in sorted(set(expected_by_path) | set(actual_by_path))
+                      if expected_by_path.get(p) != actual_by_path.get(p)]
+        raise RuntimeError(f'fixture resource manifest mismatch: {mismatches[:3]}')
     required = {'grid.html', 'lazy.html', 'filters.html', 'data/products.json', 'assets/FixtureSans-Regular.ttf', 'assets/FixtureSans-Semibold.ttf'}
     listed = {x['path'] for x in expected['resources']}
     missing = sorted(required - listed)
