@@ -69,7 +69,14 @@ def verify_fixture() -> dict:
         actual_by_path = {x['path']: x['sha256'] for x in actual['resources']}
         mismatches = [p for p in sorted(set(expected_by_path) | set(actual_by_path))
                       if expected_by_path.get(p) != actual_by_path.get(p)]
-        raise RuntimeError(f'fixture resource manifest mismatch: {mismatches[:3]}')
+        details = {'paths': mismatches[:3], 'expected_version': expected.get('fixture_version'),
+                   'actual_version': actual.get('fixture_version'),
+                   'expected_count': len(expected.get('resources', [])),
+                   'actual_count': len(actual.get('resources', []))}
+        for key in ('fixture_version', 'resources'):
+            if expected.get(key) != actual.get(key):
+                details[key + '_diff'] = {'expected': expected.get(key), 'actual': actual.get(key)}
+        raise RuntimeError(f'fixture resource manifest mismatch: {details}')
     required = {'grid.html', 'lazy.html', 'filters.html', 'data/products.json', 'assets/FixtureSans-Regular.ttf', 'assets/FixtureSans-Semibold.ttf'}
     listed = {x['path'] for x in expected['resources']}
     missing = sorted(required - listed)
