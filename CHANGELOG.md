@@ -28,6 +28,9 @@
 - Made versioned resource/state manifests authoritative and expanded browser observations and negative tests.
 ## 2026-09-25
 
+- Bound browser semantic comparison failures to a non-zero acceptance exit code and validated the complete wrapper report structure.
+- Unified positive and negative lazy-background checks, including actual desktop/mobile viewport dimensions.
+
 - Hardened Issue #1 fixture lifecycle against existing and dangling symlink/junction targets and unowned directories.
 - Added real lazy-background response, decode, applied-style, and controlled negative browser checks.
 - Restricted fixture health checks to explicit local HTTP origins and rejected redirects before following them.

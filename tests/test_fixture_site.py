@@ -34,6 +34,10 @@ class FixtureSiteTests(unittest.TestCase):
             result=self.run_cmd('reset','--run-dir',str(user)); self.assertNotEqual(result.returncode,0); self.assertTrue(sentinel.exists()); self.assertEqual(sentinel.read_text(),'keep')
         finally: temp.cleanup()
 
+    def test_browser_result_propagates_semantic_mismatch_to_exit_code(self):
+        one={'run_id':'run-1','semantic_sha256':'a'*64}; two={'run_id':'run-2','semantic_sha256':'b'*64}
+        result, exit_code=fs.browser_result([one,two]); self.assertEqual(exit_code,1); self.assertEqual(result['status'],'fail'); self.assertFalse(result['comparison']['equal'])
+
     def test_seed_rejects_existing_and_dangling_managed_links(self):
         temp,root=self.sandbox()
         try:

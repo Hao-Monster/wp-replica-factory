@@ -233,14 +233,53 @@ def browser_negative_lazy_cases(playwright) -> None:
                 self.send_error(404)
             def log_message(self,*args): pass
         server=ThreadingHTTPServer(('127.0.0.1',0), CaseHandler); thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
-        browser=playwright.chromium.launch(headless=True); page=browser.new_page(); responses=[]; page.on('response', lambda response: responses.append(response) if 'fern-pattern.svg' in response.url else None)
+        browser=playwright.chromium.launch(headless=True); page=browser.new_page(viewport={'width': 390, 'height': 844});
         try:
-            page.goto(f'http://127.0.0.1:{server.server_port}/lazy.html'); before=len(responses); page.locator('#lazy-panel').scroll_into_view_if_needed(); page.wait_for_timeout(300); after=[r for r in responses if r.request.resource_type == 'image'];
-            response_ok=bool(after) and after[-1].status == 200; decoded=response_ok and b'<svg' in after[-1].body()[:512]; applied='fern-pattern.svg' in page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage");
-            contract_ok=(before == 0 and bool(after) and response_ok and decoded and applied)
+            report = observe_lazy_contract(page, f'http://127.0.0.1:{server.server_port}/lazy.html')
+            contract_ok=report['background_rendered']
             if contract_ok: raise AssertionError(f'negative lazy case unexpectedly passed: {mode}')
         finally:
             page.close(); browser.close(); server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+
+def observe_lazy_contract(page, url: str) -> dict:
+    """Observe one lazy background using the same contract for positive/negative cases."""
+    responses=[]
+    page.on('response', lambda response: responses.append(response) if 'fern-pattern.svg' in response.url else None)
+    page.goto(url)
+    panel=page.locator('#lazy-panel')
+    before_requests=len(responses)
+    before_state=panel.get_attribute('data-loaded')
+    panel.scroll_into_view_if_needed()
+    try:
+        page.wait_for_function("document.querySelector('#lazy-panel').dataset.loaded === 'true'", timeout=5000)
+    except Exception:
+        pass
+    deadline=time.monotonic()+5; response=None
+    while time.monotonic() < deadline and not response:
+        response=next((r for r in responses if r.request.resource_type == 'image'), None)
+        if not response: page.wait_for_timeout(50)
+    after_requests=[r for r in responses if r.request.resource_type == 'image']
+    response_ok=bool(response) and response.status == 200
+    body=response.body() if response_ok else b''
+    content_valid=response_ok and b'<svg' in body[:512]
+    decoded=False
+    if response_ok:
+        try:
+            decoded=bool(page.locator('#lazy-panel').evaluate("async el => { const raw = getComputedStyle(el).backgroundImage; const image = new Image(); image.src = raw.slice(raw.indexOf('(') + 1, -1).replaceAll('\\\"', '').replaceAll(\"'\", ''); await new Promise((resolve,reject)=>{image.onload=resolve; image.onerror=reject}); return image.naturalWidth > 0 && image.naturalHeight > 0 }"))
+        except Exception:
+            decoded=False
+    background_image=page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage")
+    applied='fern-pattern.svg' in background_image
+    return {'before_state':before_state,'after_state':panel.get_attribute('data-loaded'),'background_requests_before':before_requests,'background_requests_after':len(after_requests),'background_response_ok':response_ok,'background_content_valid':content_valid,'background_decoded':decoded,'background_applied':applied,'background_rendered':before_requests == 0 and bool(after_requests) and response_ok and content_valid and decoded and applied}
+
+
+def browser_result(summaries: list[dict]) -> tuple[dict, int]:
+    comparison={'equal': summaries[0]['semantic_sha256'] == summaries[1]['semantic_sha256'], 'differing_fields': []}
+    if not comparison['equal']:
+        comparison['differing_fields']=['observations']
+    result={'status':'pass' if comparison['equal'] else 'fail','run_1':summaries[0],'run_2':summaries[1],'comparison':comparison}
+    return result, 0 if comparison['equal'] else 1
 
 
 def browser_test() -> int:
@@ -265,13 +304,9 @@ def browser_test() -> int:
                     for viewport_id, spec in VIEWPORTS.items():
                         page = context.new_page(); page.set_viewport_size({'width': spec['width'], 'height': spec['height']}); requests=[]; page.on('request', lambda req: requests.append(req.url))
                         page.goto(base + '/grid.html'); cards=page.locator('[data-testid=product-grid] .product-card'); ids=[cards.nth(i).get_attribute('data-product-id') for i in range(cards.count())]; images=[cards.nth(i).locator('img').evaluate('(img)=>img.complete && img.naturalWidth>0') for i in range(cards.count())]; xs=page.locator('.product-card').evaluate_all('(els)=>[...new Set(els.map(e=>Math.round(e.getBoundingClientRect().left)))]'); columns=len(xs); font=page.locator('h1').evaluate("el => ({family:getComputedStyle(el).fontFamily, status:document.fonts.status, loaded:[...document.fonts].some(f=>f.family==='FixtureSans' && f.status==='loaded'), check:document.fonts.check('16px FixtureSans')})"); viewport_observations={'grid':{'visible_ids':ids,'image_decoded':images,'columns':columns,'font':font} }
-                        lazy_page=context.new_page(); lazy_responses=[]; lazy_page.on('response', lambda response: lazy_responses.append(response) if 'fern-pattern.svg' in response.url else None); lazy_page.goto(base + '/lazy.html'); panel=lazy_page.locator('#lazy-panel'); before_state=panel.get_attribute('data-loaded'); before_requests=[r.url for r in lazy_responses]; lazy_page.locator('#lazy-panel').scroll_into_view_if_needed(); lazy_page.wait_for_function("document.querySelector('#lazy-panel').dataset.loaded === 'true'");
-                        deadline=time.monotonic()+5; response=None
-                        while time.monotonic() < deadline and not response:
-                            response=next((r for r in lazy_responses if r.request.resource_type == 'image'), None)
-                            if not response: lazy_page.wait_for_timeout(50)
-                        if not response: raise AssertionError('lazy background request was not observed after scroll')
-                        body=response.body(); background_response_ok=response.status == 200 and b'<svg' in body[:512]; background_decoded=background_response_ok and lazy_page.locator('#lazy-panel').evaluate("async el => { const raw = getComputedStyle(el).backgroundImage; const image = new Image(); image.src = raw.slice(raw.indexOf('(') + 1, -1).replaceAll('\\\"', '').replaceAll(\"'\", ''); await new Promise((resolve,reject)=>{image.onload=resolve; image.onerror=reject}); return image.naturalWidth > 0 && image.naturalHeight > 0 }"); background_image=lazy_page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage"); background_applied='fern-pattern.svg' in background_image; viewport_observations['lazy']={'before_state':before_state,'after_state':panel.get_attribute('data-loaded'),'background_requests_before':[urlparse(u).path for u in before_requests],'background_requests_after':[urlparse(r.url).path for r in lazy_responses],'background_response_ok':background_response_ok,'background_decoded':background_decoded,'background_applied':background_applied,'background_rendered':background_response_ok and background_decoded and background_applied,'svg_count':lazy_page.locator('.svg-mark').count()}; lazy_page.close()
+                        lazy_page=context.new_page(); lazy_page.set_viewport_size({'width': spec['width'], 'height': spec['height']}); lazy_report=observe_lazy_contract(lazy_page, base + '/lazy.html'); actual_viewport=lazy_page.evaluate('({width: innerWidth, height: innerHeight})'); lazy_report['viewport']=actual_viewport; lazy_report['background_requests_before']=lazy_report['background_requests_before']; lazy_report['svg_count']=lazy_page.locator('.svg-mark').count(); viewport_observations['lazy']=lazy_report; lazy_page.close()
+                        if actual_viewport != {'width': spec['width'], 'height': spec['height']} or not lazy_report['background_rendered']:
+                            raise AssertionError(f'lazy background contract failed for {viewport_id}: {lazy_report}')
                         page.goto(base + '/filters.html'); page.locator('.menu-toggle').click(); menu_open=page.locator('#site-menu').is_visible(); page.locator('.menu-toggle').click(); menu_closed=page.locator('#site-menu').is_hidden(); states={}
                         for filter_id in ('all','home','stationery','bags','missing','clear'):
                             page.locator(f'[data-filter={filter_id}]').click(); states[filter_id]={'visible_ids':page.locator('#filter-grid .product-card').evaluate_all('(els)=>els.map(e=>e.dataset.productId)'), 'selected':page.locator(f'[data-filter={filter_id}]').get_attribute('class')}
@@ -296,10 +331,8 @@ def browser_test() -> int:
                 finally:
                     server.shutdown(); server.server_close(); thread.join(timeout=2)
             browser_negative_lazy_cases(playwright)
-    comparison={'equal': summaries[0]['semantic_sha256'] == summaries[1]['semantic_sha256'], 'differing_fields': []}
-    if not comparison['equal']:
-        comparison['differing_fields']=['observations']
-    print(json.dumps({'status':'pass','run_1':summaries[0],'run_2':summaries[1],'comparison':comparison}, ensure_ascii=False)); return 0
+    result, exit_code = browser_result(summaries)
+    print(json.dumps(result, ensure_ascii=False)); return exit_code
 
 
 def main() -> int:
