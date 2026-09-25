@@ -52,7 +52,7 @@
         "/filters.html"
       ],
       "path": "assets/filters.js",
-      "sha256": "34ca5ad149806fb48ed044852e61e67271e1b8f4b2a543abbbfd4522b35d84e0",
+      "sha256": "119a0fa743c9297358e2cee0c47af1aad7b71961683e4676463c8286ec3e10e3",
       "source": "repository fixture",
       "type": "source"
     },
@@ -85,7 +85,7 @@
         "/filters.html"
       ],
       "path": "assets/grid.js",
-      "sha256": "cc9e0a4a8bee835d1c609cfce2d97024455af649e0afcc2d7d99d89f80118878",
+      "sha256": "6ad8edaac4037791223b326cd33c9204fef3c1ca87f0a8006cd4198e8227465b",
       "source": "repository fixture",
       "type": "source"
     },
@@ -96,7 +96,7 @@
         "/filters.html"
       ],
       "path": "assets/lazy.js",
-      "sha256": "4355bc0a274bbb84b80270dade0fada12afddf8a1f6c15bb42dd71913fcccb41",
+      "sha256": "d4e4a6623c387bcf6a7e62a617e88343a41108477ca87cdfa76f04b003d5990e",
       "source": "repository fixture",
       "type": "source"
     },
@@ -118,7 +118,7 @@
         "/filters.html"
       ],
       "path": "assets/site.css",
-      "sha256": "0f626223f4fd0b3cc893c67cfcb8ae1ff9897a3dbcbc4f9427119df0718e7761",
+      "sha256": "a6d274d72e8da49aaa72f84446ee0c69a598d1d456739acded841fa027a9fa07",
       "source": "repository fixture",
       "type": "source"
     },
@@ -129,7 +129,7 @@
         "/filters.html"
       ],
       "path": "assets/site.js",
-      "sha256": "afe0a9c2a586a84ae0455b7e393b89e3702b3bcf32dc86d0d4b7160f7301bfaa",
+      "sha256": "f6c3072305a2af430d657a69e387eba289d257efed020c57a3b4759560f7e249",
       "source": "repository fixture",
       "type": "source"
     },
@@ -140,7 +140,7 @@
         "/filters.html"
       ],
       "path": "data/products.json",
-      "sha256": "575f9c139939256316ef638c88f85fa79179ab367fcf224344dce0ad2d0de829",
+      "sha256": "09177473db0aa1739287a1aaa24ea4bcbe2eea66e64738b34b3e87a5a9b435c3",
       "source": "repository fixture",
       "type": "data"
     },
@@ -151,7 +151,7 @@
         "/filters.html"
       ],
       "path": "filters.html",
-      "sha256": "fd02c3e1a97cb88ce1589a5218166624114896d99f6af5b7e7f4c69fba91860c",
+      "sha256": "c209d10a0d1331ff9113430762d3ce636e3d58a78bf7656a289ba46f25643bd6",
       "source": "repository fixture",
       "type": "source"
     },
@@ -162,7 +162,7 @@
         "/filters.html"
       ],
       "path": "grid.html",
-      "sha256": "07d3752d4410818c34de2069e3016e17f036c1b184dad944a1609c5cf1baca8b",
+      "sha256": "dec2d74cca039eeb9a4d6032e477110f71f240f111c90b956c9072d030bd4ed8",
       "source": "repository fixture",
       "type": "source"
     },
@@ -173,7 +173,7 @@
         "/filters.html"
       ],
       "path": "index.html",
-      "sha256": "50892cb190bbc5f0d5ff904ebb00b4b1b85049fda828f175939beab5385462e5",
+      "sha256": "005bb0b87260f8c0d49fbe33945ff69ea63de4749f7ff07b61cc74f6eb698dcd",
       "source": "repository fixture",
       "type": "source"
     },
@@ -184,7 +184,7 @@
         "/filters.html"
       ],
       "path": "lazy.html",
-      "sha256": "2b63464bf71fe30d46983727e40f942007d5cee53db2701a640fe8fc04d1e540",
+      "sha256": "9159bcd582c18b947c733f3b12c3739fe459da8e17fd21e18ff62e3596ad1806",
       "source": "repository fixture",
       "type": "source"
     },
@@ -195,7 +195,7 @@
         "/filters.html"
       ],
       "path": "STATE_MATRIX.json",
-      "sha256": "f1f6e0f3b7d4a8eea61490088baff003e7357129c154744a42187e9f66a4645e",
+      "sha256": "1f72efb804cfb285b89557929a8f6437cc3da8bc174e17a828d65ff83689f40a",
       "source": "repository fixture",
       "type": "data"
     }
