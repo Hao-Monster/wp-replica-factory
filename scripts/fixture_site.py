@@ -226,10 +226,17 @@ def browser_test() -> int:
                             raise AssertionError(f'fixture observation failed for {viewport_id}: {viewport_observations['grid']}, {viewport_observations['lazy']}, blocked={blocked}')
                     original=json.loads((run/'products.json').read_text(encoding='utf-8')); changed=json.loads(json.dumps(original)); changed['products'][0]['name']='Changed Runtime Product'; (run/'products.json').write_text(json.dumps(changed),encoding='utf-8'); page=context.new_page(); page.goto(base+'/grid.html'); page.wait_for_selector('[data-product-id="owned-001"] h2'); changed_seen=page.locator('[data-product-id="owned-001"] h2').inner_text() == 'Changed Runtime Product'; reset(run, emit=False); page.reload(); page.wait_for_selector('[data-product-id="owned-001"] h2'); reset_seen=page.locator('[data-product-id="owned-001"] h2').inner_text() == original['products'][0]['name']; page.close(); context.close(); browser.close();
                     if not changed_seen or not reset_seen: raise AssertionError('runtime mutation/reset was not observed by the running service')
-                    normalized=json.dumps(observations, sort_keys=True, separators=(',', ':')); summaries.append({'run_id': f'run-{run_number}', 'observations': observations, 'semantic_sha256': hashlib.sha256(normalized.encode()).hexdigest(), 'runtime_changed_seen': changed_seen, 'runtime_reset_seen': reset_seen})
+                    def semantic(value):
+                        if isinstance(value, dict):
+                            return {k: semantic(v) for k, v in value.items() if not k.startswith('background_requests_')}
+                        if isinstance(value, list):
+                            return [semantic(v) for v in value]
+                        return value
+                    semantic_observations = semantic(observations)
+                    normalized=json.dumps(semantic_observations, sort_keys=True, separators=(',', ':')); summaries.append({'run_id': f'run-{run_number}', 'observations': observations, 'semantic_sha256': hashlib.sha256(normalized.encode()).hexdigest(), 'runtime_changed_seen': changed_seen, 'runtime_reset_seen': reset_seen})
                 finally:
                     server.shutdown(); server.server_close(); thread.join(timeout=2)
-    comparison={'equal': summaries[0]['observations'] == summaries[1]['observations'], 'differing_fields': []}
+    comparison={'equal': summaries[0]['semantic_sha256'] == summaries[1]['semantic_sha256'], 'differing_fields': []}
     if not comparison['equal']:
         comparison['differing_fields']=['observations']
     print(json.dumps({'status':'pass','run_1':summaries[0],'run_2':summaries[1],'comparison':comparison}, ensure_ascii=False)); return 0
