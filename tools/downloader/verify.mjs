@@ -18,6 +18,7 @@ export function verify(root,{requirePreview=false}={}) {
     const resources=rs.resources,routes=rt.routes;
     check(m.policy_sha256===sha(JSON.stringify(m.policy,null,2)+'\n'),'policy digest');
     check(typeof m.engine?.browser==='string'&&typeof m.engine.playwright==='string','browser/runtime evidence');
+    check(/^[a-f0-9]{64}$/.test(m.engine?.adapter_sha256||''),'adapter source digest missing');
     check(m.core_sha256===coreDigest(routes,resources)&&report.core_sha256===m.core_sha256,'core digest');
     check(routes.every(r=>typeof r.url==='string'&&Array.isArray(r.from)&&['visited','excluded'].includes(r.status)),'pending/failed/malformed route');
     check(routes.some(r=>r.url===m.policy.url&&r.status==='visited'),'entry route not visited');
@@ -61,8 +62,19 @@ export function verify(root,{requirePreview=false}={}) {
       fileHash('site/'+target.path,target.sha256);
       check(resources.some(r=>r.local_path==='site/'+target.path&&r.local_sha256===target.sha256&&r.mime===target.mime),'alias not backed by verified resource');
     }
+    for(const route of routes.filter(r=>r.status==='visited')) {
+      const u=new URL(route.url),key=u.pathname+u.search,target=mapping.aliases[key];
+      const expected=resources.find(r=>r.url===(route.final_url||route.url)&&r.status==='saved'&&r.request_type==='document');
+      check(Boolean(expected&&target&&'site/'+target.path===expected.local_path),'missing or incorrect page alias '+key);
+    }
+    for(const r of resources.filter(r=>r.status==='saved')) {
+      const target=mapping.aliases['/'+r.local_path.slice(5)];
+      check(Boolean(target&&'site/'+target.path===r.local_path),'missing object alias '+r.url);
+    }
+    check(typeof mapping.entry==='string'&&Object.hasOwn(mapping.aliases,mapping.entry),'entry alias missing');
     const refs=readJSON(root,'reports/references.json');
     check(refs.schema===1&&Array.isArray(refs.references)&&Array.isArray(refs.gaps)&&refs.gaps.length===0&&Array.isArray(refs.warnings),'reference report');
+    check(refs.references?.every(ref=>resources.some(r=>r.url===ref.to&&r.status==='saved')),'reference targets missing');
     if(m.har?.enabled) {
       const data=fileHash(m.har.path,m.har.sha256),har=JSON.parse(data);
       check(m.har.session_id===m.session_id&&har.log?.version==='1.2'&&har.log.entries?.length>0&&har.log.entries.length===m.har.entries,'HAR structure/session');
@@ -72,6 +84,9 @@ export function verify(root,{requirePreview=false}={}) {
       const p=readJSON(root,'reports/preview.json');
       check(p.schema===1&&p.run_id===m.run_id&&p.core_sha256===m.core_sha256&&p.status==='complete','preview status/provenance');
       check(Array.isArray(p.pages)&&p.pages.length===m.counts.visited*m.policy.viewports.length&&p.pages.every(x=>x.status==='passed'),'preview coverage');
+      const expectedCases=new Set(routes.filter(r=>r.status==='visited').flatMap(r=>m.policy.viewports.map(v=>JSON.stringify([new URL(r.url).pathname+new URL(r.url).search,v.width,v.height]))));
+      const actualCases=new Set(p.pages?.map(c=>JSON.stringify([c.path,c.viewport.width,c.viewport.height])));
+      check(actualCases.size===expectedCases.size&&[...expectedCases].every(c=>actualCases.has(c)),'preview case identity/duplicate');
       check(Array.isArray(p.requests)&&p.requests.length>0&&Array.isArray(p.failures)&&p.failures.length===0,'preview request evidence');
       check(Array.isArray(p.checks)&&p.checks.every(c=>c.status==='passed'&&Array.isArray(c.assertions)&&c.assertions.length>0),'preview checks');
       if(Array.isArray(p.pages))for(const page of p.pages) {
@@ -102,8 +117,8 @@ export function compareRuns(first,second) {
 
 // A child exit code is not acceptance. This same function is used by the real
 // end-to-end runner and its negative cases (including a lying exit-zero child).
-export function executionVerdict(result,root) {
-  const validation=verify(root);
+export function executionVerdict(result,root,options={}) {
+  const validation=verify(root,options);
   const errors=[...validation.errors];
   if(result.code!==0) errors.push('child nonzero exit');
   if(result.timedOut) errors.push('child timeout');

@@ -66,6 +66,7 @@ try {
     const result=await cli(['verify',dir,'--browser','--checks',checksPath]);
     assert.equal(result.code,0,JSON.stringify(result.data?.failures||result));
     assert.equal(result.data?.status,'complete');assert.equal(verify(dir,{requirePreview:true}).status,'complete');
+    assert.equal((await cli(['verify',dir,'--require-preview'])).code,0,'strict preview CLI must accept genuine evidence');
     assert.equal(result.data.checks.length,6);assert.ok(result.data.checks.every(c=>c.status==='passed'));
     assert.ok(result.data.requests.every(r=>new URL(r.url).origin===result.data.origin));
     record('C-offline-preview-'+n,{directory:dir,pages:result.data.pages.length,checks:result.data.checks.length,assertions:result.data.checks.reduce((n,c)=>n+c.assertions.length,0),requests:result.data.requests.length,source_stopped:true});
@@ -91,12 +92,16 @@ try {
     ['internal-failed',dir=>{const m=readJSON(dir,'manifest.json');m.status='failed';fs.writeFileSync(path.join(dir,'manifest.json'),json(m));}],
     ['fake-HAR',dir=>fs.writeFileSync(path.join(dir,'network/capture.har'),'{"requests":[]}')],
     ['alias-outside-site',dir=>{const m=readJSON(dir,'site/route-map.json');m.aliases['/escape']={path:'../manifest.json',mime:'text/html',sha256:'0'.repeat(64)};fs.writeFileSync(path.join(dir,'site/route-map.json'),json(m));}],
+    ['missing-page-alias',dir=>{const m=readJSON(dir,'site/route-map.json');delete m.aliases['/grid.html'];fs.writeFileSync(path.join(dir,'site/route-map.json'),json(m));}],
+    ['missing-adapter-digest',dir=>{const m=readJSON(dir,'manifest.json');delete m.engine.adapter_sha256;fs.writeFileSync(path.join(dir,'manifest.json'),json(m));}],
+    ['empty-preview-report',dir=>fs.writeFileSync(path.join(dir,'reports/preview.json'),'{}'),true],
+    ['duplicate-preview-page',dir=>{const p=readJSON(dir,'reports/preview.json');p.pages[1]=p.pages[0];fs.writeFileSync(path.join(dir,'reports/preview.json'),json(p));},true],
   ];
-  for(const [name,mutate]of cases) {
+  for(const [name,mutate,requirePreview=false]of cases) {
     const dir=output('tamper-'+name);fs.cpSync(output('owned-1'),dir,{recursive:true});mutate(dir);
-    const validation=verify(dir);assert.equal(validation.status,'failed',name);
-    const process=await cli(['verify',dir]);assert.notEqual(process.code,0);
-    assert.equal(executionVerdict({code:0,timedOut:false,data:{status:'complete'}},dir).status,'failed');
+    const validation=verify(dir,{requirePreview});assert.equal(validation.status,'failed',name);
+    const process=await cli(['verify',dir,...(requirePreview?['--require-preview']:[])]);assert.notEqual(process.code,0);
+    assert.equal(executionVerdict({code:0,timedOut:false,data:{status:'complete'}},dir,{requirePreview}).status,'failed');
     record('G-'+name,{exit_code:process.code,errors:validation.errors});
   }
   for(const child of [{code:0,data:{}},{code:0,data:{status:'failed'}},{code:1,data:{status:'complete'}},{code:0,timedOut:true,data:{status:'complete'}}])assert.equal(executionVerdict(child,output('owned-1')).status,'failed');

@@ -76,6 +76,7 @@ node tools/downloader/cli.mjs preview .replica/downloads/my-owned-run --port 812
 ```powershell
 $r = Get-Content -Encoding UTF8 .replica/downloader-acceptance.json -Raw | ConvertFrom-Json
 node tools/downloader/cli.mjs verify $r.primary_download --browser --checks (Join-Path $r.primary_download 'reports/approved-preview-checks.json')
+node tools/downloader/cli.mjs verify $r.primary_download --require-preview
 node tools/downloader/cli.mjs preview $r.primary_download --port 8124 --open
 node tools/downloader/cli.mjs compare $r.primary_download $r.repeat_download
 ```
@@ -94,11 +95,12 @@ node tools/downloader/cli.mjs compare $r.primary_download $r.repeat_download
 `--policy examples/downloader.policy.example.json` 读取完整策略。
 CLI 可覆盖 `--page-origin`、`--asset-origin`、`--public-get`（可多次）、
 `--max-pages`、`--max-depth`、`--viewport`、`--timeout`、`--budget`、`--har`。
+`verify --require-preview` 还检查既有预览报告的逐路由/视口覆盖、截图哈希、实际请求和断言，拒绝空报告或重复页面凑数。
 策略支持显式 `readySelector` 和获准的 `states[].actions`（scroll/hover/click），
 每个状态独立新 page，同一采集 context；不自动发现或盲点按钮。
 
 默认单页串行，25 页、深度 2。origin 必须是完整协议、IP 和端口，不笼统允许
-localhost 的任意端口。页面和资源 allowlist 分离。XHR/fetch 只有精确列入
+localhost 的任意端口。页面和资源 allowlist 分离；v0.1 页面限定一个 origin，资源可独立批准多个 origin，避免跨站脚本的根相对路径被错误混用。XHR/fetch 只有精确列入
 `publicGetFixtures` 的公开 GET URL 可捕获和本地服务；拒绝所有写请求。
 采集浏览器不携带既有 cookie/profile；代理移除认证和 cookie 请求头。
 

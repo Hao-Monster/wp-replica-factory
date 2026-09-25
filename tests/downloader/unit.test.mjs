@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { newOutput, safeFile, mapPath, exitCode, policyFor, normalizeUrl, bodyProblem } from '../../tools/downloader/core.mjs';
+import { newOutput, safeFile, mapPath, exitCode, policyFor, normalizeUrl, bodyProblem, coreDigest } from '../../tools/downloader/core.mjs';
 import { verify } from '../../tools/downloader/verify.mjs';
 
 test('query order, case and Windows-reserved names never alias', () => {
@@ -24,10 +24,19 @@ for(const [name,input]of [
   ['invalid viewport',{url:'http://127.0.0.1:8765/',viewports:[{width:0,height:844}]}],
   ['unknown mode',{url:'http://127.0.0.1:8765/',mode:'production'}],
   ['wildcard asset permission',{url:'http://127.0.0.1:8765/',assetOrigins:['*']}],
+  ['multiple page origins',{url:'http://127.0.0.1:8765/',pageOrigins:['http://127.0.0.1:8765','http://127.0.0.1:8766']}],
 ])test('policy rejects '+name,()=>assert.throws(()=>policyFor(input)));
 
 test('URL normalization preserves query order and trailing slash, removes fragments',()=>{
   assert.equal(normalizeUrl('/a/?z=2&z=1#section','http://127.0.0.1:8765'),'http://127.0.0.1:8765/a/?z=2&z=1');
+});
+test('core digest includes route redirects and localized content, not only raw bodies',()=>{
+  const route={url:'http://127.0.0.1:8765/',final_url:'http://127.0.0.1:8765/a',status:'visited'};
+  const resource={url:route.url,method:'GET',response_url:route.final_url,mime:'text/html',http_status:200,status:'saved',raw_sha256:'a',local_sha256:'b'};
+  const base=coreDigest([route],[resource]);
+  assert.notEqual(base,coreDigest([{...route,final_url:route.url}],[resource]));
+  assert.notEqual(base,coreDigest([route],[{...resource,local_sha256:'changed'}]));
+  assert.notEqual(base,coreDigest([route],[{...resource,redirect_target:route.url}]));
 });
 for(const [name,body,type,mime,status]of [
   ['HTTP 404',Buffer.from('missing'),'image','image/png',404],

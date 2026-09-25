@@ -86,6 +86,7 @@ export function policyFor(input) {
     }
   }
   if (!p.pageOrigins.includes(new URL(p.url).origin)) throw new Error('entry outside page allowlist');
+  if (p.pageOrigins.some(origin=>origin!==new URL(p.url).origin)) throw new Error('v0.1 supports one page origin; independent asset origins remain supported');
   if (!Array.isArray(p.publicGetFixtures)) throw new Error('publicGetFixtures must be an array');
   p.publicGetFixtures=p.publicGetFixtures.map(u=>normalizeUrl(u,p.url));
   if (!Array.isArray(p.states)||p.states.some(s=>!s.name||!Array.isArray(s.actions)||s.actions.some(a=>!['scroll','hover','click'].includes(a.type)||((a.type!=='scroll')&&!a.selector)))) throw new Error('invalid approved state operations');
@@ -113,7 +114,7 @@ export function bodyProblem(body,type,mime,status) {
   return null;
 }
 export function coreDigest(routes,resources) {
-  const r=routes.map(x=>[x.url,x.status,x.reason||'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  const s=resources.map(x=>[x.url,x.method,x.response_url,x.mime,x.http_status,x.status,x.raw_sha256||'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const r=routes.map(x=>[x.url,x.final_url||'',x.status,x.reason||'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const s=resources.map(x=>[x.url,x.method,x.response_url,x.redirect_target||'',x.mime,x.http_status,x.status,x.raw_sha256||'',x.local_sha256||'']).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
   return sha(JSON.stringify({routes:r,resources:s}));
 }

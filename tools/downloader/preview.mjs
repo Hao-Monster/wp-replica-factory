@@ -94,6 +94,10 @@ export async function verifyBrowser(root,checks=[]) {
         const response=await page.goto(server.origin+entry.path,{waitUntil:'networkidle'});
         await page.waitForFunction(()=>document.fonts.status==='loaded');
         entry.observations=await page.evaluate(()=>({title:document.title,images:[...document.images].map(i=>({src:i.currentSrc,decoded:i.complete&&i.naturalWidth>0})),fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),viewport:{width:innerWidth,height:innerHeight},h1:[...document.querySelectorAll('h1')].map(e=>e.textContent)}));
+        const captured=manifest.captures.find(c=>c.url===route.url&&c.viewport.width===viewport.width&&c.viewport.height===viewport.height&&c.state==='default');
+        const expected=readJSON(root,captured.files['signals.json'].path).signals;
+        entry.expected_document={title:expected.title,h1:expected.h1};
+        if(entry.observations.title!==expected.title||JSON.stringify(entry.observations.h1.map(x=>x.trim().replace(/\s+/g,' ')))!==JSON.stringify(expected.h1))throw new Error('preview document differs from captured route');
         if(response.status()!==200||entry.observations.images.some(i=>!i.decoded)||entry.observations.fonts.some(f=>f.status==='error')||errors.length)throw new Error('page render/decode/JavaScript check failed');
         entry.status='passed';
         const screenshot=`reports/preview-${sha(entry.path+JSON.stringify(viewport)).slice(0,20)}.png`;

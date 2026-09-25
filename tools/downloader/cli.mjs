@@ -8,7 +8,7 @@ import { verify, compareRuns } from './verify.mjs';
 import { serve, openIsolated, verifyBrowser } from './preview.mjs';
 
 try {
-  const {positionals,values}=parseArgs({allowPositionals:true,options:{url:{type:'string'},out:{type:'string'},policy:{type:'string'},'max-pages':{type:'string'},'max-depth':{type:'string'},'page-origin':{type:'string',multiple:true},'asset-origin':{type:'string',multiple:true},'public-get':{type:'string',multiple:true},viewport:{type:'string',multiple:true},timeout:{type:'string'},budget:{type:'string'},har:{type:'boolean'},mode:{type:'string'},browser:{type:'boolean'},checks:{type:'string'},port:{type:'string'},open:{type:'boolean'},help:{type:'boolean'}}});
+  const {positionals,values}=parseArgs({allowPositionals:true,options:{url:{type:'string'},out:{type:'string'},policy:{type:'string'},'max-pages':{type:'string'},'max-depth':{type:'string'},'page-origin':{type:'string',multiple:true},'asset-origin':{type:'string',multiple:true},'public-get':{type:'string',multiple:true},viewport:{type:'string',multiple:true},timeout:{type:'string'},budget:{type:'string'},har:{type:'boolean'},mode:{type:'string'},browser:{type:'boolean'},'require-preview':{type:'boolean'},checks:{type:'string'},port:{type:'string'},open:{type:'boolean'},help:{type:'boolean'}}});
   const command=positionals[0];
   if(values.help||!command){console.log('download --url URL --policy POLICY.json [--out NEW-DIR] [--har]\nverify RUN-DIR [--browser --checks CHECKS.json]\npreview RUN-DIR [--port 8124 --open]\ncompare RUN-1 RUN-2\nOptions: --max-pages 25 --max-depth 2 --viewport 1440x1000 --timeout 15000 --budget 180000\nExplicit origins: --page-origin ORIGIN --asset-origin ORIGIN --public-get URL\nOnly owned-fixture is executable; authorized-public is blocked.');}
   else if(command==='download') {
@@ -26,7 +26,7 @@ try {
     if(!positionals[1])throw new Error('RUN-DIR required');
     const root=path.resolve(positionals[1]);
     const checks=values.checks?JSON.parse(fs.readFileSync(values.checks,'utf8')):[];
-    const result=values.browser?await verifyBrowser(root,checks):verify(root);
+    const result=values.browser?await verifyBrowser(root,checks):verify(root,{requirePreview:Boolean(values['require-preview'])});
     console.log(json(result));process.exitCode=exitCode(result.status);
   } else if(command==='compare') {
     if(!positionals[1]||!positionals[2])throw new Error('two run directories required');
