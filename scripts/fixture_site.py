@@ -29,7 +29,10 @@ def sha(path: Path) -> str:
 
 def source_files() -> list[Path]:
     excluded = {'RESOURCE_MANIFEST.json', 'STATE_MATRIX.md', 'README.md'}
-    return sorted(p for p in FIXTURE.rglob('*') if p.is_file() and p.name not in excluded)
+    return sorted(
+        (p for p in FIXTURE.rglob('*') if p.is_file() and p.name not in excluded),
+        key=lambda p: p.relative_to(FIXTURE).as_posix().casefold(),
+    )
 
 
 def calculated_manifest() -> dict:
@@ -65,18 +68,7 @@ def verify_fixture() -> dict:
     expected = json.loads(expected_path.read_text(encoding='utf-8'))
     actual = calculated_manifest()
     if expected != actual:
-        expected_by_path = {x['path']: x['sha256'] for x in expected.get('resources', [])}
-        actual_by_path = {x['path']: x['sha256'] for x in actual['resources']}
-        mismatches = [p for p in sorted(set(expected_by_path) | set(actual_by_path))
-                      if expected_by_path.get(p) != actual_by_path.get(p)]
-        details = {'paths': mismatches[:3], 'expected_version': expected.get('fixture_version'),
-                   'actual_version': actual.get('fixture_version'),
-                   'expected_count': len(expected.get('resources', [])),
-                   'actual_count': len(actual.get('resources', []))}
-        for key in ('fixture_version', 'resources'):
-            if expected.get(key) != actual.get(key):
-                details[key + '_diff'] = {'expected': expected.get(key), 'actual': actual.get(key)}
-        raise RuntimeError(f'fixture resource manifest mismatch: {details}')
+        raise RuntimeError('fixture resource manifest mismatch; restore or review versioned expected hashes')
     required = {'grid.html', 'lazy.html', 'filters.html', 'data/products.json', 'assets/FixtureSans-Regular.ttf', 'assets/FixtureSans-Semibold.ttf'}
     listed = {x['path'] for x in expected['resources']}
     missing = sorted(required - listed)
