@@ -118,7 +118,7 @@
         "/filters.html"
       ],
       "path": "assets/site.css",
-      "sha256": "b7c9c176e7e88b27e2316cb15cbd2b7ec539b1a136f04ae3b35b94abe7048dac",
+      "sha256": "0f626223f4fd0b3cc893c67cfcb8ae1ff9897a3dbcbc4f9427119df0718e7761",
       "source": "repository fixture",
       "type": "source"
     },
@@ -189,4 +189,4 @@
       "type": "source"
     }
   ]
-}\n
+}
