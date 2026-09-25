@@ -1,0 +1,8 @@
+{
+  "products": [
+    {"id":"owned-001","sku":"OWN-001","name":"Aurora Mug","category":"home","price":"24.00","image":"/assets/aurora-mug.svg"},
+    {"id":"owned-002","sku":"OWN-002","name":"Field Notebook","category":"stationery","price":"12.50","image":"/assets/field-notebook.svg"},
+    {"id":"owned-003","sku":"OWN-003","name":"Cedar Tote","category":"bags","price":"38.00","image":"/assets/cedar-tote.svg"},
+    {"id":"owned-004","sku":"OWN-004","name":"Orbit Lamp","category":"home","price":"64.00","image":"/assets/orbit-lamp.svg"}
+  ]
+}

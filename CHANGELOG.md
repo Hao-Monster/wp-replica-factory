@@ -19,3 +19,8 @@
 ## 0.1.0 — 原始启动包
 
 提供四个重建 Skills、Python 控制层、19 项测试、平台建设规格与未启用的 CI/CD 示例。
+
+## Unreleased
+
+- Added a local-only owned fixture site with fixed product data, resource manifest, lifecycle commands, responsive grid, lazy background/SVG state, and menu/filter states.
+- Added Playwright browser acceptance and negative lifecycle tests; CI runs the locked fixture browser job without external site or production access.
