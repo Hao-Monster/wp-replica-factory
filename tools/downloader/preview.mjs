@@ -61,7 +61,11 @@ async function assertion(page,step) {
     const match=bg.match(/^url\(["']?(.*?)["']?\)$/);if(!match)return false;
     const image=new Image();image.src=match[1];try{await image.decode();return image.naturalWidth>0;}catch{return false;}
   });
-  const fields=['count','visible','text','ids','columns','value','backgroundLoaded'].filter(k=>k in step);
+  if('fontLoaded' in step)actual.fontLoaded=await loc.evaluate(el=>{
+    const family=getComputedStyle(el).fontFamily.split(',')[0].replaceAll('"','').trim();
+    return [...document.fonts].some(f=>f.family.replaceAll('"','')===family&&f.status==='loaded')&&document.fonts.check('16px '+family);
+  });
+  const fields=['count','visible','text','ids','columns','value','backgroundLoaded','fontLoaded'].filter(k=>k in step);
   if(!fields.length)throw new Error('assertion has no expected values');
   const passed=fields.every(k=>JSON.stringify(actual[k])===JSON.stringify(step[k]));
   return {expected:step,actual,passed};

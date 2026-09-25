@@ -8,6 +8,7 @@ export function captureResponses(context, {maxBytes, observe, save, fail}) {
   const listener=response=>{
     const request=response.request(), headers=response.headers();
     const entry={url:request.url(),response_url:response.url(),http_status:response.status(),method:request.method(),request_type:request.resourceType(),mime:headers['content-type']||'',observation:{...observe()}};
+    if(entry.http_status>=300&&entry.http_status<400&&headers.location)entry.redirect_target=new URL(headers.location,response.url()).href;
     const task=(async()=>{
       try {
         if(entry.method!=='GET') return;

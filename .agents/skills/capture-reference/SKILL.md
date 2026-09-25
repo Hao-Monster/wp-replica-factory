@@ -4,6 +4,12 @@ description: 采集获准的参考网页、真实图片、字体、CSS 与页面
 ---
 
 # Capture Reference
+下载子阶段已有可执行入口，先读 `docs/DOWNLOADER.zh-CN.md`：
+`node tools/downloader/cli.mjs download|verify|preview|compare`。
+仅 owned-fixture 模式可运行；PR #5 固定 SHA 是只读测试依赖，公共站模式保持 blocked。
+必须检查真实文件和独立预览报告；下载 complete 不代表完整状态矩阵、视觉基准或 WooCommerce 验收通过。
+HAR 敏感，不提交或默认上传；原始响应与本地化 site 分离。
+
 先检查 project.json 的授权及域名 allowlist；未知 CDN 须先记录来源和授权，不能静默放开所有域。
 使用隔离 profile；不使用主浏览器的 GitHub、WordPress 管理或支付登录态。
 浏览器交互可由 Playwright MCP 完成；确定性批量采集使用已锁定版本的 Playwright 脚本。

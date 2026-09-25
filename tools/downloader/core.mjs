@@ -45,6 +45,18 @@ export function put(root, relative, content, immutable=false) {
   fs.writeFileSync(file,content,{flag:immutable?'wx':'w'});
 }
 export const readJSON = (root, name) => JSON.parse(fs.readFileSync(safeFile(root,name),'utf8'));
+export function adapterFingerprint() {
+  const directory=path.join(ROOT,'tools/downloader'),entries=[];
+  function walk(dir) {
+    for(const name of fs.readdirSync(dir).sort()) {
+      if(name==='node_modules')continue;
+      const p=path.join(dir,name),stat=fs.lstatSync(p);
+      if(stat.isDirectory())walk(p);
+      else if(name.endsWith('.mjs')||['package.json','package-lock.json'].includes(name))entries.push([path.relative(directory,p).split(path.sep).join('/'),sha(fs.readFileSync(p))]);
+    }
+  }
+  walk(directory);return sha(JSON.stringify(entries));
+}
 export function extension(mime) {
   const m=mime.split(';')[0].trim().toLowerCase();
   return ({'text/html':'html','text/css':'css','application/javascript':'js','text/javascript':'js','application/json':'json','image/svg+xml':'svg','image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/avif':'avif','font/ttf':'ttf','application/x-font-ttf':'ttf','font/otf':'otf','font/woff':'woff','font/woff2':'woff2','application/font-woff':'woff','application/wasm':'wasm','image/x-icon':'ico'})[m] || 'bin';

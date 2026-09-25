@@ -1,0 +1,3 @@
+# These scoped directories contain source/text only, not captured binaries.
+tools/downloader/** text eol=lf
+tests/downloader/** text eol=lf

@@ -3,9 +3,12 @@
 用于持续开发「授权网站 → WordPress + WooCommerce 高保真重建」工具链的框架仓库。
 
 **当前版本 0.1.1：控制层 + GitHub 仓库管理准备版，不是完整自动复刻器。**
-浏览器采集器、真实评估器、持续调度器和部署适配器仍待实现。当前 CI 不运行模型、不爬取外站、不连接 WordPress、不部署。
+本分支新增可选的下载器 v0.1：固定 OpenDesign 子集与 Playwright，在自有 fixture 上落盘 HTML/资源并独立预览；完整状态采集、可信视觉评估、持续调度器和部署适配器仍待实现。CI 不运行模型、不爬取外站、不连接 WordPress、不部署。
 
 ## 从这里开始
+
+下载、文件验证、断源预览与固定验收：`docs/DOWNLOADER.zh-CN.md`。
+命令入口：`node tools/downloader/cli.mjs --help`。PR #5 是固定 SHA 的只读测试依赖，不并入本下载分支。
 
 - 首次上传 GitHub：`docs/GITHUB_OPERATIONS.zh-CN.md`。
 - 交给 IDE 的首次仓库托管任务：`prompts/GITHUB_SETUP.zh-CN.md`。

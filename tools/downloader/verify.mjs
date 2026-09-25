@@ -74,6 +74,15 @@ export function verify(root,{requirePreview=false}={}) {
       check(Array.isArray(p.pages)&&p.pages.length===m.counts.visited*m.policy.viewports.length&&p.pages.every(x=>x.status==='passed'),'preview coverage');
       check(Array.isArray(p.requests)&&p.requests.length>0&&Array.isArray(p.failures)&&p.failures.length===0,'preview request evidence');
       check(Array.isArray(p.checks)&&p.checks.every(c=>c.status==='passed'&&Array.isArray(c.assertions)&&c.assertions.length>0),'preview checks');
+      if(Array.isArray(p.pages))for(const page of p.pages) {
+        check(page.observations?.viewport?.width===page.viewport?.width&&page.observations?.viewport?.height===page.viewport?.height,'preview viewport mismatch');
+        check(Array.isArray(page.observations?.images)&&page.observations.images.every(i=>i.decoded===true),'preview image evidence');
+        check(Array.isArray(page.errors)&&page.errors.length===0,'preview page errors');
+        if(!page.screenshot?.startsWith('reports/'))throw new Error('missing preview screenshot');
+        fileHash(page.screenshot,page.screenshot_sha256);
+      }
+      check(p.requests?.every(r=>r.method==='GET'&&new URL(r.url).origin===p.origin),'preview outbound request');
+      check(p.checks?.every(c=>c.assertions.every(a=>a.passed===true&&a.actual&&a.expected)),'preview failed assertion');
     }
   } catch(error) {errors.push(error.message);}
   return {schema:1,status:errors.length?'failed':'complete',errors};
@@ -83,8 +92,12 @@ export function compareRuns(first,second) {
   const a=verify(first),b=verify(second);
   if(a.status!=='complete'||b.status!=='complete')return {status:'failed',equal:false,first:a,second:b};
   const one=readJSON(first,'manifest.json'),two=readJSON(second,'manifest.json');
-  const equal=one.core_sha256===two.core_sha256;
-  return {status:equal?'complete':'failed',equal,first_sha256:one.core_sha256,second_sha256:two.core_sha256,metadata_excluded:['run_id','session_id','capture timestamps','HAR timings','observation ordering'],differing:equal?[]:['routes/resources content or status']};
+  const samePolicy=one.policy_sha256===two.policy_sha256;
+  const sameRuntime=one.engine.browser===two.engine.browser&&one.engine.playwright===two.engine.playwright&&one.engine.adapter_sha256===two.engine.adapter_sha256;
+  const equal=one.core_sha256===two.core_sha256&&samePolicy&&sameRuntime;
+  const aResources=readJSON(first,'resources.json').resources,bResources=readJSON(second,'resources.json').resources;
+  const aKeys=new Set(aResources.map(r=>JSON.stringify([r.url,r.status,r.raw_sha256]))),bKeys=new Set(bResources.map(r=>JSON.stringify([r.url,r.status,r.raw_sha256])));
+  return {status:equal?'complete':'failed',equal,same_policy:samePolicy,same_runtime:sameRuntime,first_sha256:one.core_sha256,second_sha256:two.core_sha256,metadata_excluded:['run_id','session_id','capture timestamps','HAR timings','observation ordering'],differing:equal?[]:['routes/resources, policy or runtime'],only_first:[...aKeys].filter(k=>!bKeys.has(k)).map(JSON.parse),only_second:[...bKeys].filter(k=>!aKeys.has(k)).map(JSON.parse)};
 }
 
 // A child exit code is not acceptance. This same function is used by the real

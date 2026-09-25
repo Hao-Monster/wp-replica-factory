@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { SCHEMA, sha, json, put, safeFile, newOutput, policyFor, mapPath, normalizeUrl, resourceKind, bodyProblem, coreDigest } from './core.mjs';
+import { SCHEMA, sha, json, put, safeFile, newOutput, policyFor, mapPath, normalizeUrl, resourceKind, bodyProblem, coreDigest, adapterFingerprint } from './core.mjs';
 import { scopedProxy, launch, restrictContext, playwrightVersion } from './runtime.mjs';
 import { collectPage } from './vendor/open-design/route-crawl.mjs';
 import { collectSignals } from './vendor/open-design/recon-site.mjs';
@@ -15,6 +15,7 @@ export async function download(input,output) {
   const run_id=crypto.randomUUID(), session_id=crypto.randomUUID(), started_at=new Date().toISOString();
   const manifest={schema:SCHEMA,run_id,session_id,started_at,engine:{name:'OpenDesign web-clone selective adapter',version:'0.1.0',upstream:'1b47e60bd46641469fcd8b69c496c4e3a548bc28',playwright:playwrightVersion,node:process.version,os:os.platform(),browser:null},policy,policy_sha256:sha(json(policy)),status:'failed',mirror_mode:'original-html-and-client-scripts',limitations:['authorized-public blocked without externally enforced network isolation','no automatic interaction discovery','hash routes, iframe, Shadow DOM, Canvas and server-side business state are not generalized','responsive candidates not requested by configured viewports are reported; no automatic supplemental GET','conflicting response variants are retained but default replay selects the first and marks partial'],failures:[],har:{enabled:policy.har,session_id,sensitive:true,uploaded:false}};
   const routes=[],resources=[],captures=[],gaps=[],warnings=[],networkFailures=[];
+  manifest.engine.adapter_sha256=adapterFingerprint();
   if(policy.mode!=='owned-fixture') {
     manifest.status='blocked';manifest.failures.push({reason:'authorized_public_requires_external_network_isolation'});
     put(root,'manifest.json',json(manifest));put(root,'routes.json',json({schema:1,routes}));put(root,'resources.json',json({schema:1,resources}));

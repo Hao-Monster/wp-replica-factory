@@ -13,6 +13,13 @@ export function localize(root,policy,routes,resources,gaps,warnings) {
     if(!byUrl.has(r.url)) byUrl.set(r.url,r);
     else if(byUrl.get(r.url).raw_sha256!==r.raw_sha256) gaps.push({reason:'response_variant_conflict',url:r.url,variants:[byUrl.get(r.url).local_path,r.local_path]});
   }
+  // Resolve only redirect targets actually captured in this same session. This
+  // never fetches or serves an online fallback and preserves the original URL.
+  const redirects=resources.filter(r=>r.status==='redirect'&&r.redirect_target);
+  for(let pass=0;pass<redirects.length;pass++)for(const r of redirects) {
+    const target=byUrl.get(r.redirect_target);
+    if(target&&!byUrl.has(r.url))byUrl.set(r.url,target);
+  }
   const pageMap=new Map(routes.filter(r=>r.status==='visited').map(r=>[r.url,byUrl.get(r.final_url||r.url)]));
   const references=[];
   const reference=(raw,base,kind,owner,optional=false)=>{
@@ -103,6 +110,10 @@ export function localize(root,policy,routes,resources,gaps,warnings) {
   }
   for(const [url,record] of pageMap) if(record?.status==='saved') {
     const u=new URL(url);aliases[u.pathname+u.search]={path:record.local_path.slice(5),mime:record.mime,sha256:record.local_sha256};
+  }
+  for(const r of redirects) {
+    const record=byUrl.get(r.url),u=new URL(r.url);
+    if(record?.status==='saved'&&u.origin===new URL(policy.url).origin)aliases[u.pathname+u.search]={path:record.local_path.slice(5),mime:record.mime,sha256:record.local_sha256};
   }
   put(root,'site/route-map.json',json({schema:1,entry:new URL(policy.url).pathname+new URL(policy.url).search,aliases}));
   put(root,'reports/references.json',json({schema:1,references,gaps,warnings}));
