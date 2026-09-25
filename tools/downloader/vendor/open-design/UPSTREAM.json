@@ -1,0 +1,45 @@
+{
+  "repository": "nexu-io/open-design",
+  "commit": "1b47e60bd46641469fcd8b69c496c4e3a548bc28",
+  "scope_license": "MIT",
+  "root_license": "Apache-2.0",
+  "notice_files_in_scope": [],
+  "reviewed_files": [
+    {
+      "path": "skills/web-clone/LICENSE",
+      "sha256": "c503556db0db95e79c947d3ff5077119be858aae23e08c2242124130f4a191bb"
+    },
+    {
+      "path": "skills/web-clone/references/static-mirror.md",
+      "sha256": "d14bbc5e07ab2a708307cdb310e6aa7af8b7c9721322fac45e100e31f47d5839"
+    },
+    {
+      "path": "skills/web-clone/scripts/asset-harvest.mjs",
+      "sha256": "857c151ef56f3affcb519fbbd57623d6179cd0c986ac0a6ee0b64064e64d1b95"
+    },
+    {
+      "path": "skills/web-clone/scripts/lib/playwright-loader.mjs",
+      "sha256": "6ed746e0a1a3288cbc033b9d5eed6565d3e8802182aa77e66d481d989fdf1acd"
+    },
+    {
+      "path": "skills/web-clone/scripts/lib/system-browser.mjs",
+      "sha256": "b741c6e33a0850f5e2690fa40164f8a27a151f584eeaa37a97969153d71e85a8"
+    },
+    {
+      "path": "skills/web-clone/scripts/mirror-site.mjs",
+      "sha256": "997ec107feca2867a857602824f271cc5486a8500b1ce12238d5b98f96a9208d"
+    },
+    {
+      "path": "skills/web-clone/scripts/network-capture.mjs",
+      "sha256": "994cbdfc0d9849e0cd9794ff381e87c6bc8e0ed3e4548141d803c055bf0dde82"
+    },
+    {
+      "path": "skills/web-clone/scripts/recon-site.mjs",
+      "sha256": "616fd99a81f5a17be3f286d26cac058554d02bf2b0a0cbb406f0760e030331d8"
+    },
+    {
+      "path": "skills/web-clone/scripts/route-crawl.mjs",
+      "sha256": "7fff5c984f20283d53f438146f904282b319faba2b43d4bdd10f9826d7c20b37"
+    }
+  ]
+}
