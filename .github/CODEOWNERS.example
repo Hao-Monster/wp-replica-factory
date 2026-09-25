@@ -1,0 +1,10 @@
+# NOT ACTIVE. Replace the owner below with a real maintainer who has write access,
+# save as .github/CODEOWNERS, then enable code-owner review in branch protection.
+# Do not copy this placeholder into an enabled file unchanged.
+* @REPLACE_WITH_MAINTAINER
+/.github/ @REPLACE_WITH_MAINTAINER
+/AGENTS.md @REPLACE_WITH_MAINTAINER
+/.agents/ @REPLACE_WITH_MAINTAINER
+/scripts/ @REPLACE_WITH_MAINTAINER
+/tests/ @REPLACE_WITH_MAINTAINER
+/ci-templates/ @REPLACE_WITH_MAINTAINER

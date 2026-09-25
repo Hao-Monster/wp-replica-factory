@@ -1,0 +1,55 @@
+# Machine-specific configuration and credentials. Commit sanitized examples only.
+.env
+.env.*
+!.env.example
+project.json
+project.local.json
+*.local.json
+*.local.toml
+*.local.yaml
+*.local.yml
+.secrets/
+.ssh/
+.auth/
+playwright/.auth/
+storageState.json
+storage-state.json
+cookies.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime evidence: use restricted artifact storage, not the framework history.
+.replica/
+runs/
+reference/
+reports/
+artifacts/
+browser-profile/
+browser-profiles/
+playwright-report/
+test-results/
+*.har
+*.log
+
+# Dependencies and local build files.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+.DS_Store
+Thumbs.db
+
+# WordPress state and business data never belong in the framework repository.
+wp-config.php
+wp-content/uploads/
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.db

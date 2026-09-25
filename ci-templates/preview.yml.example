@@ -1,0 +1,29 @@
+# 未启用示例。先实现 docs/ADAPTER_CONTRACTS.md 的可信评估/发布适配器。
+# 不要仅删除阻断步骤就认为部署已实现。
+name: Preview release TEMPLATE
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: preview-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    environment: preview
+    timeout-minutes: 20
+    steps:
+      - name: Block until trusted adapter is implemented
+        run: |
+          echo 'NOT IMPLEMENTED: validate trusted candidate, deploy isolated preview, run remote checks.' >&2
+          exit 78
+      # 由可信控制流程实现：
+      # 1. 验证触发者/内部仓库来源及候选格式，拒绝任意 URL 或 shell 输入。
+      # 2. 读取已验证制品与受保护 baseline/policy，核对摘要和来源。
+      # 3. 使用预览专用权限部署到隔离站，不覆盖数据库或 uploads。
+      # 4. 刷新缓存并核对远端版本，运行独立验收，生成 PREVIEW_READY。

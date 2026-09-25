@@ -1,0 +1,27 @@
+# 未启用示例。environment 名称本身不会创建真正的人工审批。
+# 先配置套餐支持的审批机制，或使用独立身份的发布服务。
+name: Production release TEMPLATE
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha256:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: production-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - name: Block until approval and trusted adapter exist
+        run: |
+          echo 'NOT IMPLEMENTED: external approval, immutable artifact deploy and verified rollback.' >&2
+          exit 78
+      # 受保护控制侧实现：审批同一制品 → 摘要验证 → 备份/版本切换
+      # → 缓存刷新 → 健康检查 → 成功记录或恢复旧代码。
+      # 不重新构建；不恢复旧数据库覆盖新增订单；不运行候选仓库任意部署脚本。

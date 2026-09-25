@@ -1,0 +1,55 @@
+Local verification: CPython 3.13.5 / Linux
+Not run: GitHub cloud Actions, browser capture, Codex/Antigravity, real WordPress, deployment.
+Sensitive filename checker is NOT a full content/history secret scan.
+Original replica.py and its 19 tests are byte-for-byte unchanged.
+Active workflow YAML and five Skill frontmatters parsed locally.
+
+$ python3 -m unittest discover -s tests -v
+test_authorization_block (test_replica.Gates.test_authorization_block) ... ok
+test_baseline_added_file (test_replica.Gates.test_baseline_added_file) ... ok
+test_baseline_changed (test_replica.Gates.test_baseline_changed) ... ok
+test_baseline_symlink (test_replica.Gates.test_baseline_symlink) ... ok
+test_boolean_not_pixel_count (test_replica.Gates.test_boolean_not_pixel_count) ... ok
+test_complete (test_replica.Gates.test_complete) ... ok
+test_duplicate_visual (test_replica.Gates.test_duplicate_visual) ... ok
+test_missing_asset (test_replica.Gates.test_missing_asset) ... ok
+test_missing_font_field (test_replica.Gates.test_missing_font_field) ... ok
+test_missing_functional_check (test_replica.Gates.test_missing_functional_check) ... ok
+test_missing_visual (test_replica.Gates.test_missing_visual) ... ok
+test_nan_rejected (test_replica.Gates.test_nan_rejected) ... ok
+test_pixel_difference (test_replica.Gates.test_pixel_difference) ... ok
+test_scope_cannot_be_empty (test_replica.Gates.test_scope_cannot_be_empty) ... ok
+test_skipped_check (test_replica.Gates.test_skipped_check) ... ok
+test_stale_candidate (test_replica.Gates.test_stale_candidate) ... ok
+test_theme_package (test_replica.Gates.test_theme_package) ... ok
+test_theme_reject_secret_file (test_replica.Gates.test_theme_reject_secret_file) ... ok
+test_wrong_policy (test_replica.Gates.test_wrong_policy) ... ok
+test_business_and_runtime_files_blocked (test_repo_files.RepoFiles.test_business_and_runtime_files_blocked) ... ok
+test_env_files_blocked (test_repo_files.RepoFiles.test_env_files_blocked) ... ok
+test_project_and_sessions_blocked (test_repo_files.RepoFiles.test_project_and_sessions_blocked) ... ok
+test_reads_real_git_index (test_repo_files.RepoFiles.test_reads_real_git_index) ... ok
+test_sanitized_examples_allowed (test_repo_files.RepoFiles.test_sanitized_examples_allowed) ... ok
+test_skills_and_synthetic_fixtures_allowed (test_repo_files.RepoFiles.test_skills_and_synthetic_fixtures_allowed) ... ok
+test_windows_paths (test_repo_files.RepoFiles.test_windows_paths) ... ok
+
+----------------------------------------------------------------------
+Ran 26 tests in 0.022s
+
+OK
+
+$ python3 scripts/replica.py validate --project examples/project.example.json
+{
+  "valid": true,
+  "policy_sha256": "4eb910c4f8f6570b02caf3778458515c239f5a90d1050d607e2e1e076ce9e20a",
+  "visual_cases": 8
+}
+
+$ python3 scripts/check_repo_files.py
+{
+  "status": "pass",
+  "indexed_files": 38,
+  "violations": [],
+  "scope": "Filename/path rules only. No content or history secret scan."
+}
+
+$ git diff --cached --check

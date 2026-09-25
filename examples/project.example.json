@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "project_id": "shop-demo",
+  "factory_version": "0.1.1-starter",
+  "authorization": {
+    "reference_capture": false,
+    "asset_reuse": false,
+    "evidence": "填写授权或自有素材说明；不得伪造授权"
+  },
+  "reference": {
+    "base_url": "https://reference.example",
+    "allowed_origins": [
+      "https://reference.example"
+    ],
+    "baseline_version": "v1",
+    "locale": "en-US",
+    "timezone": "America/Los_Angeles"
+  },
+  "wordpress": {
+    "dev_url": "http://localhost:8080",
+    "local_path": "/ABSOLUTE/PATH/TO/wordpress",
+    "theme_slug": "replica-shop",
+    "runtime_profile": "待 doctor 记录 WordPress、WooCommerce、PHP 版本"
+  },
+  "scope": {
+    "pages": [
+      {
+        "id": "home",
+        "reference_path": "/",
+        "target_path": "/",
+        "states": [
+          "default"
+        ],
+        "regions": [
+          "full",
+          "header",
+          "main",
+          "footer"
+        ]
+      }
+    ],
+    "viewports": [
+      {
+        "id": "desktop",
+        "width": 1440,
+        "height": 1000,
+        "device_scale_factor": 1
+      },
+      {
+        "id": "mobile",
+        "width": 390,
+        "height": 844,
+        "device_scale_factor": 1
+      }
+    ],
+    "note": "这是首页试运行范围，不代表全站；发现后扩充并冻结 routes/states/regions 和验收策略"
+  },
+  "quality": {
+    "pixel_mode": "raw_rgba_equal",
+    "required_checks": [
+      "assets.all_present",
+      "fonts.loaded",
+      "sections.complete",
+      "routes.complete",
+      "wc.product",
+      "wc.variation",
+      "wc.cart",
+      "wc.checkout_sandbox",
+      "runtime.no_errors",
+      "security.no_secrets"
+    ],
+    "allow_skips": false
+  },
+  "loop": {
+    "max_rounds": 12,
+    "max_stagnant_rounds": 3,
+    "max_total_minutes": 120,
+    "max_total_tokens": 500000
+  },
+  "release": {
+    "preview_auto": true,
+    "production_mode": "approval",
+    "adapter": "unconfigured",
+    "database_sync": false,
+    "orders_mutation": false
+  },
+  "secrets": {
+    "note": "只填环境变量名，不填密钥值；生产凭据只交给独立受保护发布服务",
+    "preview_ssh_key_env": "PREVIEW_SSH_KEY",
+    "production_ssh_key_env": "PRODUCTION_SSH_KEY"
+  }
+}

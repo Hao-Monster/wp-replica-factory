@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "runner_status": "not_run",
+  "candidate_id": null,
+  "baseline_sha256": null,
+  "policy_sha256": null,
+  "pixel_mode": "raw_rgba_equal",
+  "missing_assets": null,
+  "missing_fonts": null,
+  "skipped": null,
+  "blocked": null,
+  "visuals": [],
+  "checks": []
+}
