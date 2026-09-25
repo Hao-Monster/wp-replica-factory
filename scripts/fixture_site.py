@@ -15,10 +15,16 @@ VIEWPORTS = {
     'desktop': {'width': 1440, 'height': 1000, 'dpr': 1, 'locale': 'en-US', 'timezone': 'UTC', 'expected_columns': 4},
     'mobile': {'width': 390, 'height': 844, 'dpr': 1, 'locale': 'en-US', 'timezone': 'UTC', 'expected_columns': 2},
 }
+TEXT_RESOURCE_SUFFIXES = {'.css', '.html', '.js', '.json', '.svg'}
 
 
 def sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    data = path.read_bytes()
+    # Hash text resources in canonical LF form so the versioned manifest is
+    # identical on Windows checkouts that use CRLF and Linux checkouts that use LF.
+    if path.suffix.lower() in TEXT_RESOURCE_SUFFIXES:
+        data = data.replace(b'\r\n', b'\n')
+    return hashlib.sha256(data).hexdigest()
 
 
 def source_files() -> list[Path]:

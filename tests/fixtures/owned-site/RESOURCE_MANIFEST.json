@@ -8,7 +8,7 @@
         "/filters.html"
       ],
       "path": "assets/aurora-mug.svg",
-      "sha256": "cd58f855b3c9fb31f90f89313673f55db2de9308db6fae01d5bb6a49ed721f06",
+      "sha256": "107b3f729e9e4f3cd263a8721a130564db7b991380a1b76652f03d838684eb4e",
       "source": "self-authored fixture",
       "type": "image"
     },
@@ -19,7 +19,7 @@
         "/filters.html"
       ],
       "path": "assets/cedar-tote.svg",
-      "sha256": "316c104aeb57aa40b4df53d56c7492da15a2e0ed6b3a1f649a3aa7cc5d441652",
+      "sha256": "b56e9a9856d32fcc0893615fba1606ec1fd1cfc738f53a45b40648c3960cb2f2",
       "source": "self-authored fixture",
       "type": "image"
     },
@@ -30,7 +30,7 @@
         "/filters.html"
       ],
       "path": "assets/fern-pattern.svg",
-      "sha256": "8e2b39a960feb887e070c8bc9b0c3df5703dda25525a273fccda3425a29c5517",
+      "sha256": "b306cf0ba44c1213ca005a2cafd5be3931a19a43f93c04efe9fecd854f4825e5",
       "source": "self-authored fixture",
       "type": "image"
     },
@@ -41,7 +41,7 @@
         "/filters.html"
       ],
       "path": "assets/field-notebook.svg",
-      "sha256": "6a60ecec7f018f6c7c40dcdabc2364be5f4019d25350f60f74fe2c42d31a19e1",
+      "sha256": "32f9d0ce53356365af63b9b7eae630729b1d3afa4d8b844553baac4a371b7993",
       "source": "self-authored fixture",
       "type": "image"
     },
@@ -107,7 +107,7 @@
         "/filters.html"
       ],
       "path": "assets/orbit-lamp.svg",
-      "sha256": "9282999ffdb5c0d3c72925439b654f2619a0409570cbdb12d101195d645e3c1d",
+      "sha256": "c37512aa16d15f7ef48301fdb167691404ba19fa766b9b61e68e5c5c7dc06230",
       "source": "self-authored fixture",
       "type": "image"
     },
