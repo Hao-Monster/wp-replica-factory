@@ -1,0 +1,3 @@
+# Keep fixture hashes identical on Windows and Linux CI.
+tests/fixtures/owned-site/** text eol=lf
+scripts/fixture_site.py text eol=lf
