@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local-only owned fixture site lifecycle and browser acceptance runner."""
 from __future__ import annotations
-import argparse, hashlib, json, shutil, sys, tempfile, threading
+import argparse, hashlib, json, os, shutil, sys, tempfile, threading, time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -82,33 +82,44 @@ def verify_fixture() -> dict:
 
 
 def _no_symlink_components(path: Path) -> None:
-    current = path.anchor and Path(path.anchor) or Path(path.root)
-    for part in path.parts[1:] if path.anchor else path.parts:
+    current = Path(path.anchor) if path.anchor else Path('.')
+    parts = path.parts[1:] if path.anchor else path.parts
+    for part in parts:
         current /= part
-        if current.exists() and current.is_symlink():
+        if os.path.lexists(current) and (current.is_symlink() or getattr(os.path, 'isjunction', lambda _: False)(current)):
             raise RuntimeError(f'refusing symlink/junction path component: {current}')
 
 
 def managed_run_path(value: Path, *, allow_create: bool = False) -> Path:
     raw = value.expanduser()
-    candidate = raw if raw.is_absolute() else ROOT / raw
-    candidate = candidate.resolve(strict=False)
+    candidate = Path(os.path.abspath(os.path.normpath(str(raw if raw.is_absolute() else ROOT / raw))))
     _no_symlink_components(candidate)
-    if candidate == ROOT or candidate == ROOT / '.git' or candidate == Path(candidate.anchor):
+    real_candidate = candidate.resolve(strict=False)
+    if real_candidate == ROOT or real_candidate == ROOT / '.git' or real_candidate == Path(real_candidate.anchor):
         raise RuntimeError('run directory is outside the dedicated fixture runtime boundary')
     default_root = (ROOT / '.replica').resolve()
-    if candidate == default_root / 'owned-site' or default_root in candidate.parents:
+    if real_candidate == default_root / 'owned-site':
         allowed = True
     else:
-        sandbox = next((p for p in [candidate.parent, *candidate.parents] if (p / SANDBOX_MARKER).is_file()), None)
-        allowed = sandbox is not None and ROOT not in candidate.parents
+        sandbox = next((p for p in [candidate, *candidate.parents] if (p / SANDBOX_MARKER).is_file()), None)
+        allowed = sandbox is not None and ROOT not in real_candidate.parents
     if not allowed:
         raise RuntimeError('run directory must be under .replica/owned-site or a marked external fixture sandbox')
-    if candidate.exists() and not candidate.is_dir():
+    if os.path.lexists(candidate) and not candidate.is_dir():
         raise RuntimeError('run directory must be a directory')
+    if os.path.lexists(candidate) and not (candidate / RUN_MARKER).is_file():
+        raise RuntimeError('run directory is not owned by this fixture lifecycle')
     if not allow_create and not (candidate / RUN_MARKER).is_file():
         raise RuntimeError('run directory is not owned by this fixture lifecycle')
-    return candidate
+    return real_candidate
+
+
+def managed_file_target(run: Path, name: str) -> Path:
+    target = run / name
+    if os.path.lexists(target) and (target.is_symlink() or getattr(os.path, 'isjunction', lambda _: False)(target) or not target.is_file()):
+        raise RuntimeError(f'refusing to replace non-regular managed file: {target}')
+    _no_symlink_components(target)
+    return target
 
 
 def seed(run_value: Path, emit: bool = True) -> None:
@@ -116,13 +127,17 @@ def seed(run_value: Path, emit: bool = True) -> None:
     run = managed_run_path(run_value, allow_create=True)
     run.mkdir(parents=True, exist_ok=True)
     marker = run / RUN_MARKER
+    if os.path.lexists(marker) and (marker.is_symlink() or not marker.is_file()):
+        raise RuntimeError(f'refusing to replace non-regular ownership marker: {marker}')
     if marker.exists() and marker.read_text(encoding='utf-8') != 'owned-fixture-run-v1\n':
         raise RuntimeError('run ownership marker is invalid')
+    products_target = managed_file_target(run, 'products.json')
+    manifest_target = managed_file_target(run, 'resource-manifest.json')
     marker.write_text('owned-fixture-run-v1\n', encoding='utf-8')
     data = json.loads((FIXTURE / 'data/products.json').read_text(encoding='utf-8'))
     ids = validate_products(data)
-    (run / 'products.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n', encoding='utf-8')
-    (run / 'resource-manifest.json').write_text(json.dumps(json.loads((FIXTURE / 'RESOURCE_MANIFEST.json').read_text(encoding='utf-8')), sort_keys=True, indent=2) + '\n', encoding='utf-8')
+    products_target.write_text(json.dumps(data, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+    manifest_target.write_text(json.dumps(json.loads((FIXTURE / 'RESOURCE_MANIFEST.json').read_text(encoding='utf-8')), sort_keys=True, indent=2) + '\n', encoding='utf-8')
     if emit:
         print(json.dumps({'status': 'seeded', 'run_dir': str(run), 'product_ids': ids, 'fixture': verify_fixture()}, ensure_ascii=False))
 
@@ -130,9 +145,7 @@ def seed(run_value: Path, emit: bool = True) -> None:
 def reset(run_value: Path, emit: bool = True) -> None:
     run = managed_run_path(run_value)
     for name in ('products.json', 'resource-manifest.json'):
-        target = run / name
-        if target.exists() and (target.is_symlink() or not target.is_file()):
-            raise RuntimeError(f'refusing to replace non-regular managed file: {target}')
+        managed_file_target(run, name)
     seed(run, emit=False)
     if emit:
         print(json.dumps({'status': 'reset', 'browser_storage': 'new browser context is required; no persistent storage is used'}))
@@ -172,8 +185,16 @@ def serve(port: int, run_value: Path) -> None:
 
 
 def health(url: str, run_value: Path) -> int:
-    import urllib.request
+    import urllib.error, urllib.request
     run = managed_run_path(run_value)
+    parsed_url = urlparse(url)
+    if parsed_url.scheme != 'http' or parsed_url.hostname != '127.0.0.1' or parsed_url.port is None or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment:
+        print('health failed: target must be an explicit local HTTP origin without credentials or redirects', file=sys.stderr); return 1
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPRedirectHandler)
+    class RejectRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise urllib.error.HTTPError(req.full_url, code, 'redirect rejected', headers, fp)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), RejectRedirect())
     fixture = verify_fixture()
     expected = json.loads((FIXTURE / 'RESOURCE_MANIFEST.json').read_text(encoding='utf-8'))
     runtime = json.loads((run / 'resource-manifest.json').read_text(encoding='utf-8'))
@@ -183,11 +204,43 @@ def health(url: str, run_value: Path) -> int:
     checks = []
     for path in ['/grid.html', '/lazy.html', '/filters.html', '/data/products.json', '/assets/FixtureSans-Regular.ttf']:
         try:
-            with urllib.request.urlopen(url.rstrip('/') + path, timeout=5) as response:
+            target = url.rstrip('/') + path
+            target_parsed = urlparse(target)
+            if (target_parsed.scheme, target_parsed.hostname, target_parsed.port) != (parsed_url.scheme, parsed_url.hostname, parsed_url.port):
+                raise RuntimeError('health target escaped the approved origin')
+            with opener.open(target, timeout=5) as response:
                 checks.append({'path': path, 'status': response.status})
         except Exception as exc:
             print(f'health failed: {path}: {exc}', file=sys.stderr); return 1
     print(json.dumps({'status': 'pass', 'fixture_integrity': fixture, 'runtime_data_sha256': sha(run / 'products.json'), 'http_checks': checks}, ensure_ascii=False)); return 0
+
+
+def browser_negative_lazy_cases(playwright) -> None:
+    """Run controlled browser failures against a local-only test server."""
+    from http.server import BaseHTTPRequestHandler
+    for mode in ('404', 'abort', 'corrupt', 'eager'):
+        class CaseHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == '/lazy.html':
+                    eager = "#lazy-panel{background-image:url('/assets/fern-pattern.svg')}" if mode == 'eager' else ''
+                    script = "const p=document.querySelector('#lazy-panel');new IntersectionObserver(()=>{p.style.backgroundImage=\"url('/assets/fern-pattern.svg')\"}).observe(p)" if mode != 'eager' else ''
+                    body=f'<style>{eager}#lazy-panel{{height:1200px;margin-top:1000px}}</style><div id="lazy-panel"></div><script>{script}</script>'.encode()
+                    self.send_response(200); self.send_header('Content-Type','text/html'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body); return
+                if self.path == '/assets/fern-pattern.svg':
+                    if mode == 'abort': self.close_connection = True; self.connection.close(); return
+                    body = b'not-an-image' if mode == 'corrupt' else (b'' if mode == '404' else b'<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"></svg>')
+                    self.send_response(404 if mode == '404' else 200); self.send_header('Content-Type','image/svg+xml'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body); return
+                self.send_error(404)
+            def log_message(self,*args): pass
+        server=ThreadingHTTPServer(('127.0.0.1',0), CaseHandler); thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+        browser=playwright.chromium.launch(headless=True); page=browser.new_page(); responses=[]; page.on('response', lambda response: responses.append(response) if 'fern-pattern.svg' in response.url else None)
+        try:
+            page.goto(f'http://127.0.0.1:{server.server_port}/lazy.html'); before=len(responses); page.locator('#lazy-panel').scroll_into_view_if_needed(); page.wait_for_timeout(300); after=[r for r in responses if r.request.resource_type == 'image'];
+            response_ok=bool(after) and after[-1].status == 200; decoded=response_ok and b'<svg' in after[-1].body()[:512]; applied='fern-pattern.svg' in page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage");
+            contract_ok=(before == 0 and bool(after) and response_ok and decoded and applied)
+            if contract_ok: raise AssertionError(f'negative lazy case unexpectedly passed: {mode}')
+        finally:
+            page.close(); browser.close(); server.shutdown(); server.server_close(); thread.join(timeout=2)
 
 
 def browser_test() -> int:
@@ -212,7 +265,13 @@ def browser_test() -> int:
                     for viewport_id, spec in VIEWPORTS.items():
                         page = context.new_page(); page.set_viewport_size({'width': spec['width'], 'height': spec['height']}); requests=[]; page.on('request', lambda req: requests.append(req.url))
                         page.goto(base + '/grid.html'); cards=page.locator('[data-testid=product-grid] .product-card'); ids=[cards.nth(i).get_attribute('data-product-id') for i in range(cards.count())]; images=[cards.nth(i).locator('img').evaluate('(img)=>img.complete && img.naturalWidth>0') for i in range(cards.count())]; xs=page.locator('.product-card').evaluate_all('(els)=>[...new Set(els.map(e=>Math.round(e.getBoundingClientRect().left)))]'); columns=len(xs); font=page.locator('h1').evaluate("el => ({family:getComputedStyle(el).fontFamily, status:document.fonts.status, loaded:[...document.fonts].some(f=>f.family==='FixtureSans' && f.status==='loaded'), check:document.fonts.check('16px FixtureSans')})"); viewport_observations={'grid':{'visible_ids':ids,'image_decoded':images,'columns':columns,'font':font} }
-                        page.goto(base + '/lazy.html'); before=[u for u in requests if 'fern-pattern.svg' in u]; panel=page.locator('#lazy-panel'); before_state=panel.get_attribute('data-loaded'); page.locator('#lazy-panel').scroll_into_view_if_needed(); page.wait_for_function("document.querySelector('#lazy-panel').dataset.loaded === 'true'"); after=[u for u in requests if 'fern-pattern.svg' in u]; background_image=page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage"); resource_loaded='fern-pattern.svg' in background_image; viewport_observations['lazy']={'before_state':before_state,'after_state':panel.get_attribute('data-loaded'),'background_requests_before':[urlparse(u).path for u in before],'background_requests_after':[urlparse(u).path for u in after],'resource_loaded':resource_loaded,'background_rendered':resource_loaded,'svg_count':page.locator('.svg-mark').count()}
+                        lazy_page=context.new_page(); lazy_responses=[]; lazy_page.on('response', lambda response: lazy_responses.append(response) if 'fern-pattern.svg' in response.url else None); lazy_page.goto(base + '/lazy.html'); panel=lazy_page.locator('#lazy-panel'); before_state=panel.get_attribute('data-loaded'); before_requests=[r.url for r in lazy_responses]; lazy_page.locator('#lazy-panel').scroll_into_view_if_needed(); lazy_page.wait_for_function("document.querySelector('#lazy-panel').dataset.loaded === 'true'");
+                        deadline=time.monotonic()+5; response=None
+                        while time.monotonic() < deadline and not response:
+                            response=next((r for r in lazy_responses if r.request.resource_type == 'image'), None)
+                            if not response: lazy_page.wait_for_timeout(50)
+                        if not response: raise AssertionError('lazy background request was not observed after scroll')
+                        body=response.body(); background_response_ok=response.status == 200 and b'<svg' in body[:512]; background_decoded=background_response_ok and lazy_page.locator('#lazy-panel').evaluate("async el => { const raw = getComputedStyle(el).backgroundImage; const image = new Image(); image.src = raw.slice(raw.indexOf('(') + 1, -1).replaceAll('\\\"', '').replaceAll(\"'\", ''); await new Promise((resolve,reject)=>{image.onload=resolve; image.onerror=reject}); return image.naturalWidth > 0 && image.naturalHeight > 0 }"); background_image=lazy_page.locator('#lazy-panel').evaluate("el=>getComputedStyle(el).backgroundImage"); background_applied='fern-pattern.svg' in background_image; viewport_observations['lazy']={'before_state':before_state,'after_state':panel.get_attribute('data-loaded'),'background_requests_before':[urlparse(u).path for u in before_requests],'background_requests_after':[urlparse(r.url).path for r in lazy_responses],'background_response_ok':background_response_ok,'background_decoded':background_decoded,'background_applied':background_applied,'background_rendered':background_response_ok and background_decoded and background_applied,'svg_count':lazy_page.locator('.svg-mark').count()}; lazy_page.close()
                         page.goto(base + '/filters.html'); page.locator('.menu-toggle').click(); menu_open=page.locator('#site-menu').is_visible(); page.locator('.menu-toggle').click(); menu_closed=page.locator('#site-menu').is_hidden(); states={}
                         for filter_id in ('all','home','stationery','bags','missing','clear'):
                             page.locator(f'[data-filter={filter_id}]').click(); states[filter_id]={'visible_ids':page.locator('#filter-grid .product-card').evaluate_all('(els)=>els.map(e=>e.dataset.productId)'), 'selected':page.locator(f'[data-filter={filter_id}]').get_attribute('class')}
@@ -222,7 +281,7 @@ def browser_test() -> int:
                             if state['state_id'].startswith('filter-'): expected_filters[state['state_id'][7:]]=state['expected_ids']
                         if any(states[k]['visible_ids'] != v for k,v in expected_filters.items()): raise AssertionError(f'filter state observation mismatch: {states}'); page.close()
                         summaries_expected= {'columns':spec['expected_columns']}
-                        if columns != summaries_expected['columns'] or not all(images) or not font['loaded'] or not font['check'] or not resource_loaded or not menu_open or not menu_closed or blocked:
+                        if columns != summaries_expected['columns'] or not all(images) or not font['loaded'] or not font['check'] or not viewport_observations['lazy']['background_rendered'] or not menu_open or not menu_closed or blocked:
                             raise AssertionError(f'fixture observation failed for {viewport_id}: {viewport_observations['grid']}, {viewport_observations['lazy']}, blocked={blocked}')
                     original=json.loads((run/'products.json').read_text(encoding='utf-8')); changed=json.loads(json.dumps(original)); changed['products'][0]['name']='Changed Runtime Product'; (run/'products.json').write_text(json.dumps(changed),encoding='utf-8'); page=context.new_page(); page.goto(base+'/grid.html'); page.wait_for_selector('[data-product-id="owned-001"] h2'); changed_seen=page.locator('[data-product-id="owned-001"] h2').inner_text() == 'Changed Runtime Product'; reset(run, emit=False); page.reload(); page.wait_for_selector('[data-product-id="owned-001"] h2'); reset_seen=page.locator('[data-product-id="owned-001"] h2').inner_text() == original['products'][0]['name']; page.close(); context.close(); browser.close();
                     if not changed_seen or not reset_seen: raise AssertionError('runtime mutation/reset was not observed by the running service')
@@ -236,6 +295,7 @@ def browser_test() -> int:
                     normalized=json.dumps(semantic_observations, sort_keys=True, separators=(',', ':')); summaries.append({'run_id': f'run-{run_number}', 'observations': observations, 'semantic_sha256': hashlib.sha256(normalized.encode()).hexdigest(), 'runtime_changed_seen': changed_seen, 'runtime_reset_seen': reset_seen})
                 finally:
                     server.shutdown(); server.server_close(); thread.join(timeout=2)
+            browser_negative_lazy_cases(playwright)
     comparison={'equal': summaries[0]['semantic_sha256'] == summaries[1]['semantic_sha256'], 'differing_fields': []}
     if not comparison['equal']:
         comparison['differing_fields']=['observations']

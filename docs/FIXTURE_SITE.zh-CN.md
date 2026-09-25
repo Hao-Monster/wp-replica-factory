@@ -57,6 +57,8 @@ py -3 -X utf8 scripts/fixture_site.py test
 
 `RESOURCE_MANIFEST.json` 是版本化的期望清单，健康检查不会自动刷新它。文本资源按 LF 规范化后计算 SHA-256，保证 Windows 和 Linux 工作树使用同一摘要；字体等二进制资源按原始字节计算。
 
+验收运行还会检查受管理文件的链接/junction 边界、懒加载背景的实际响应状态和浏览器解码、health 的本地 origin 与重定向拒绝，以及失败时的结构化 `fixture-test-result.json`。CI 在测试失败后仍上传该脱敏结果；上传失败不会覆盖测试退出码。
+
 `RESOURCE_MANIFEST.json` 和 `STATE_MATRIX.json` 是版本化期望值。seed、health 和 test 都核对资源路径、SHA-256、商品图片关联、页面状态 ID 和运行副本清单；不会自动更新期望值。health 分开报告 fixture 完整性、运行数据 SHA-256 和 HTTP 检查。
 
 浏览器 test 的 `run_1` 与 `run_2` 使用不同运行目录和新浏览器上下文，分别输出实际观察和语义 SHA-256，并报告比较字段。实际观察包括 DOM 商品 ID/顺序、元素边界列数、每张图片解码、字体加载状态和使用证据、懒加载背景的实际渲染、全部筛选状态、菜单状态与被阻断的外部请求。状态摘要一致不代表逐像素一致。

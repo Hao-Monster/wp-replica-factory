@@ -26,3 +26,9 @@
 - Added Playwright browser acceptance and negative lifecycle tests; CI runs the locked fixture browser job without external site or production access.
 - Hardened fixture run-directory ownership and reset boundaries; runtime pages now read the managed seed copy.
 - Made versioned resource/state manifests authoritative and expanded browser observations and negative tests.
+## 2026-09-25
+
+- Hardened Issue #1 fixture lifecycle against existing and dangling symlink/junction targets and unowned directories.
+- Added real lazy-background response, decode, applied-style, and controlled negative browser checks.
+- Restricted fixture health checks to explicit local HTTP origins and rejected redirects before following them.
+- Added structured acceptance failure evidence with always-run CI artifact upload while preserving test exit codes.

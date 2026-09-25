@@ -45,13 +45,16 @@ jobs:
       - name: Run fixture lifecycle and browser acceptance
         run: |
           set -o pipefail
-          python -X utf8 scripts/fixture_site.py seed
-          python -X utf8 scripts/fixture_site.py test | tee fixture-test-output.json
+          python -X utf8 scripts/run_fixture_acceptance.py
+      - name: Verify fixture evidence exists
+        if: always()
+        run: test -s fixture-test-result.json
       - name: Run fixture unit and control tests
         run: python -X utf8 -m unittest discover -s tests -v
       - name: Upload fixture evidence
+        if: always()
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3, pinned
         with:
           name: owned-fixture-evidence
-          path: fixture-test-output.json
+          path: fixture-test-result.json
           retention-days: 7
