@@ -71,6 +71,3 @@ def main():
  if a.cmd=='health': return health(a.url)
  return browser_test()
 if __name__=='__main__': raise SystemExit(main())
-
-
-
