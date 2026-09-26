@@ -13,3 +13,13 @@ description: 将已冻结的页面规格实现为可运行的 WordPress 与 WooC
 对比用固定 fixture 数据；自己的真实商品不同于参考站时，分离“参考复现验收”和“真实商品接入验收”，不宣称两者截图完全相等。
 不改核心文件，不在线编辑生产，不覆盖数据库、uploads、客户、订单、密钥或生产配置。
 每次生成候选后交给独立测试，不能自己把缺少的断言补成 pass。
+
+
+## G3 staging core handoff
+
+远端/Compose staging 写操作必须通过目标 WordPress 的 `wp_get_environment_type()` 门禁；
+配置标签或域名不能替代运行时证明。主题部署、fixture seed、checkout、order 使用拆分 gate，
+不要因为支付/邮件/order gate 未通过而阻塞纯主题部署。Compose runtime 只按 service name 寻址，
+缺少容器 WP-CLI 时使用临时官方 `wordpress:cli`，不得向 WordPress container 永久安装 WP-CLI。
+候选截图只对 owned staging/fixture 执行，并交给独立 visual evaluator；本 Skill 不修改 baseline
+或 evaluator threshold。

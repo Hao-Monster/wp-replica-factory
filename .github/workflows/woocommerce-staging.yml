@@ -1,0 +1,257 @@
+name: WooCommerce staging core
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: woocommerce-staging-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.12.0'
+
+      - name: Run staging contract unit tests
+        run: python3 -m unittest tests.test_wordpress_staging -v
+
+      - name: Install controlled browser dependency
+        run: |
+          npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
+          node tools/downloader/node_modules/playwright/cli.js install chromium
+
+      - name: Start isolated WordPress and MariaDB
+        run: |
+          rm -rf .replica/ci-wp
+          mkdir -p .replica/ci-evidence
+          docker compose -f docker-compose.woocommerce-staging.yml up -d
+
+      - name: Bootstrap fixture through ephemeral wordpress:cli
+        run: |
+          set -euo pipefail
+          ENV_FILE="$(mktemp)"
+          chmod 600 "$ENV_FILE"
+          trap 'rm -f "$ENV_FILE"' EXIT
+          cat >"$ENV_FILE" <<'EOF'
+          WORDPRESS_DB_HOST=db:3306
+          WORDPRESS_DB_USER=wordpress
+          WORDPRESS_DB_PASSWORD=fixture-only
+          WORDPRESS_DB_NAME=wordpress
+          EOF
+          for i in $(seq 1 60); do
+            docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress test -f /var/www/html/wp-includes/version.php && break
+            test "$i" -lt 60 || exit 1
+            sleep 2
+          done
+          sudo chmod -R a+rwX .replica/ci-wp
+          CID="$(docker compose -f docker-compose.woocommerce-staging.yml ps -q wordpress)"
+          test -n "$CID"
+          NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$CID" | head -n1)"
+          test -n "$NET"
+          wpcli() {
+            docker run --rm --network "$NET" --volumes-from "$CID" -w /var/www/html --env-file "$ENV_FILE" wordpress:cli wp "$@" --path=/var/www/html --allow-root
+          }
+          wpcli core install --url=http://127.0.0.1:8080 --title='Replica Fixture' --admin_user=replica --admin_password='fixture-admin-only' --admin_email=replica@example.invalid --skip-email
+          wpcli config set WP_ENVIRONMENT_TYPE staging --type=constant
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress php -l /var/www/html/wp-config.php
+          test "$(wpcli eval 'echo wp_get_environment_type();')" = staging
+          wpcli plugin install woocommerce --version=10.0.4 --activate
+          wpcli option update permalink_structure '/%postname%/'
+          SHOP_ID="$(wpcli post list --post_type=page --name=shop --field=ID | head -n1)"
+          if [ -z "$SHOP_ID" ]; then
+            SHOP_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Shop --post_name=shop --porcelain)"
+          fi
+          CART_ID="$(wpcli post list --post_type=page --name=cart --field=ID | head -n1)"
+          if [ -z "$CART_ID" ]; then
+            CART_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Cart --post_name=cart --post_content='[woocommerce_cart]' --porcelain)"
+          fi
+          CHECKOUT_ID="$(wpcli post list --post_type=page --name=checkout --field=ID | head -n1)"
+          if [ -z "$CHECKOUT_ID" ]; then
+            CHECKOUT_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Checkout --post_name=checkout --post_content='[woocommerce_checkout]' --porcelain)"
+          fi
+          wpcli post update "$CART_ID" --post_content='[woocommerce_cart]'
+          wpcli post update "$CHECKOUT_ID" --post_content='[woocommerce_checkout]'
+          wpcli option update woocommerce_shop_page_id "$SHOP_ID"
+          wpcli option update woocommerce_cart_page_id "$CART_ID"
+          wpcli option update woocommerce_checkout_page_id "$CHECKOUT_ID"
+          test "$(wpcli option get woocommerce_cart_page_id)" = "$CART_ID"
+          test "$(wpcli option get woocommerce_checkout_page_id)" = "$CHECKOUT_ID"
+          wpcli rewrite flush --hard
+          wpcli option update replica_fixture_marker replica-fixture
+          wpcli option update replica_checkout_fixture_enabled 1
+          wpcli option update replica_real_payment_disabled 1
+          wpcli option update replica_mail_disabled 1
+          wpcli option update replica_external_inventory_sync_disabled 1
+          sudo chown -R "$USER":"$(id -gn)" .replica/ci-wp
+          sudo chmod -R u+rwX,go+rX .replica/ci-wp
+          mkdir -p .replica/ci-wp/wp-content/mu-plugins
+          cat >.replica/ci-wp/wp-content/mu-plugins/replica-fixture-safety.php <<'PHP'
+          <?php
+          add_filter('pre_wp_mail', '__return_true', PHP_INT_MAX);
+          add_filter('woocommerce_available_payment_gateways', '__return_empty_array', PHP_INT_MAX);
+          add_filter('pre_http_request', function ($pre, $args, $url) {
+              $host = wp_parse_url($url, PHP_URL_HOST);
+              if (in_array($host, ['127.0.0.1', 'localhost'], true)) {
+                  return $pre;
+              }
+              return new WP_Error('replica_external_http_blocked', 'External HTTP is disabled in the owned CI fixture.');
+          }, PHP_INT_MAX, 3);
+          PHP
+          rm -f "$ENV_FILE"
+          trap - EXIT
+          test ! -e "$ENV_FILE"
+
+      - name: Write owned staging config
+        run: |
+          python3 - <<'PY'
+          import json, os
+          root=os.environ["GITHUB_WORKSPACE"]
+          cfg={
+            "environment":"staging","production":False,
+            "siteUrl":"http://127.0.0.1:8080","transport":"local",
+            "runtime":{
+              "type":"docker-compose-wordpress","composePath":root,
+              "composeFile":"docker-compose.woocommerce-staging.yml",
+              "service":"wordpress","hostWpPath":os.path.join(root,".replica","ci-wp"),
+              "containerWpPath":"/var/www/html"
+            },
+            "policy":{"allowDevelopment":False,"activate":True},
+            "themeSlug":"replica-woocommerce","fixtureMarker":"replica-fixture",
+            "healthPaths":["/","/shop/"],
+            "healthReportPath":os.path.join(root,".replica","ci-evidence","staging-health.json")
+          }
+          with open(".replica/staging.json","w",encoding="utf-8") as f: json.dump(cfg,f,indent=2)
+          PY
+
+      - name: Exercise ephemeral CLI gates and first deploy
+        run: |
+          set -euo pipefail
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json doctor | tee .replica/ci-evidence/doctor.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json gates | tee .replica/ci-evidence/gates.json
+          python3 - <<'PY'
+          import json
+          gates=json.load(open(".replica/ci-evidence/gates.json"))
+          required=["REMOTE_ACCESS_GATE","WORDPRESS_ENVIRONMENT_GATE","THEME_DEPLOY_GATE","PRODUCT_SEED_GATE","CHECKOUT_GATE","ORDER_GATE"]
+          bad={k:gates.get(k) for k in required if gates.get(k)!="PASS"}
+          assert not bad, bad
+          PY
+          python3 adapters/wordpress-staging/build.py --reference-status owned --out .replica/artifacts/v1
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json deploy --artifact .replica/artifacts/v1/theme.zip --manifest .replica/artifacts/v1/manifest.json | tee .replica/ci-evidence/deploy-v1.json
+          python3 - <<'PY' | tee .replica/ci-evidence/sentinel-before-cleanup.json
+          import importlib.util, json, pathlib, sys
+          path=pathlib.Path("adapters/wordpress-staging/adapter.py")
+          spec=importlib.util.spec_from_file_location("staging_sentinel",path)
+          module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; spec.loader.exec_module(module)
+          adapter=module.StagingAdapter(json.load(open(".replica/staging.json")))
+          code="""
+          $product_id=wc_get_product_id_by_sku('replica-sentinel-preserve');
+          if(!$product_id){$p=new WC_Product_Simple();$p->set_name('Sentinel Preserve');$p->set_sku('replica-sentinel-preserve');$p->set_regular_price('99');$p->set_status('publish');$product_id=$p->save();}
+          $order=wc_create_order(['status'=>'pending','created_via'=>'sentinel-preserve']);
+          $order->add_product(wc_get_product($product_id),1);$order->calculate_totals();$order->save();
+          echo json_encode(['sentinel_product_id'=>$product_id,'sentinel_order_id'=>$order->get_id()]);
+          """
+          print(adapter.run_wp_cli(["eval",code]))
+          PY
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json seed --fixture | tee .replica/ci-evidence/seed.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json order-test --fixture | tee .replica/ci-evidence/order.json
+          python3 scripts/verify_fixture_cleanup.py capture --config .replica/staging.json --sentinel .replica/ci-evidence/sentinel-before-cleanup.json --order .replica/ci-evidence/order.json --output .replica/ci-evidence/cleanup-ownership-before.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json health | tee .replica/ci-evidence/health.json
+
+      - name: Exercise update, version verification, and rollback
+        run: |
+          set -euo pipefail
+          cp -a templates/woocommerce-theme .replica/theme-v2
+          sed -i 's/Version: 1.0.0/Version: 1.0.1/' .replica/theme-v2/style.css
+          python3 adapters/wordpress-staging/build.py --theme-dir .replica/theme-v2 --reference-status owned --out .replica/artifacts/v2
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json deploy --artifact .replica/artifacts/v2/theme.zip --manifest .replica/artifacts/v2/manifest.json | tee .replica/ci-evidence/deploy-v2.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json version | tee .replica/ci-evidence/version-v2.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json rollback | tee .replica/ci-evidence/rollback.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json version | tee .replica/ci-evidence/version-after-rollback.json
+          python3 - <<'PY'
+          import json
+          v=json.load(open(".replica/ci-evidence/version-after-rollback.json"))
+          assert v["target_version"]=="1.0.0", v
+          assert v["active_theme"]=="replica-woocommerce", v
+          PY
+
+      - name: Capture owned candidate and hand off to trusted evaluator
+        run: |
+          set -euo pipefail
+          cp tests/fixtures/woocommerce-staging/capture-policy.json .replica/capture-policy.json
+          node tools/candidate-capture/cli.mjs capture --policy .replica/capture-policy.json --out .replica/baseline | tee .replica/ci-evidence/baseline-capture.json
+          node tools/candidate-capture/cli.mjs capture --policy .replica/capture-policy.json --out .replica/candidate | tee .replica/ci-evidence/candidate.json
+          python3 - <<'PY'
+          import json, pathlib
+          policy=json.load(open(".replica/capture-policy.json"))
+          expected={(route["page"],viewport["id"],state if isinstance(state,str) else state["id"])
+                    for route in policy["routes"] for viewport in policy["viewports"] for state in route["states"]}
+          assert len(expected)==14, expected
+          for directory in ("baseline","candidate"):
+              manifest=json.load(open(f".replica/{directory}/manifest.json"))
+              actual={(row["page"],row["viewport"],row["state"]) for row in manifest["screenshots"]}
+              assert len(manifest["screenshots"])==len(actual)==14, (directory,len(manifest["screenshots"]),len(actual))
+              assert actual==expected, (directory,sorted(expected-actual),sorted(actual-expected))
+              assert all(row["main_document_status"]==200 for row in manifest["screenshots"]), directory
+              assert all(row["final_route"]==row["route"] for row in manifest["screenshots"]), directory
+              assert all(pathlib.Path(f".replica/{directory}",row["path"]).is_file() for row in manifest["screenshots"]), directory
+          p=".replica/baseline/manifest.json"
+          m=json.load(open(p)); m["baseline_set_id"]="owned-ci-baseline"
+          with open(p,"w") as f: json.dump(m,f,indent=2)
+          vp={"pixel":{"maxDifferentRatio":0,"maxMeanAbsoluteError":0},"maxCandidateAgeMinutes":30,
+              "requiredStates":[{"page":page,"viewport":viewport,"state":state} for page,viewport,state in sorted(expected)],
+              "regions":[],"failOnMissingImages":True}
+          with open(".replica/visual-policy.json","w") as f: json.dump(vp,f)
+          PY
+          node tools/visual-evaluator/cli.mjs evaluate --baseline .replica/baseline --candidate .replica/candidate --policy .replica/visual-policy.json --out .replica/visual | tee .replica/ci-evidence/visual-evaluate.json
+          node tools/visual-evaluator/cli.mjs verify-report .replica/visual | tee .replica/ci-evidence/visual-verify.json
+
+      - name: Run candidate and evaluator integration negatives
+        run: |
+          node tests/candidate-capture.mjs
+          node tests/visual-evaluator.mjs
+
+      - name: Cleanup owned fixture data
+        run: |
+          set -euo pipefail
+          if python3 scripts/verify_fixture_cleanup.py verify --config .replica/staging.json --sentinel .replica/ci-evidence/sentinel-before-cleanup.json --order .replica/ci-evidence/order.json --evidence .replica/ci-evidence/cleanup-ownership-before.json --output .replica/ci-evidence/cleanup-verification-before.json; then
+            echo "cleanup verifier unexpectedly accepted live fixture objects" >&2
+            exit 1
+          fi
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json cleanup --fixture | tee .replica/ci-evidence/cleanup.json
+          python3 scripts/verify_fixture_cleanup.py verify --config .replica/staging.json --sentinel .replica/ci-evidence/sentinel-before-cleanup.json --order .replica/ci-evidence/order.json --evidence .replica/ci-evidence/cleanup-ownership-before.json --output .replica/ci-evidence/cleanup-verification.json
+
+      - name: Repository file gate
+        run: python3 scripts/check_repo_files.py
+
+      - name: Upload controlled staging evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: woocommerce-staging-core-evidence
+          path: |
+            .replica/ci-evidence
+            .replica/baseline/manifest.json
+            .replica/baseline/screenshots
+            .replica/baseline/diagnostics
+            .replica/candidate/manifest.json
+            .replica/candidate/screenshots
+            .replica/candidate/diagnostics
+            .replica/visual/reports
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose -f docker-compose.woocommerce-staging.yml down -v

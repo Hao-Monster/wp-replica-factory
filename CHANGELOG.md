@@ -1,3 +1,10 @@
+## Unreleased
+
+- Add reusable G3 remote WooCommerce staging core: host/Compose runtimes, ephemeral official WP-CLI, runtime environment gates, target-theme artifact/deploy/version/health/rollback, fixture-only side-effect gates, owned candidate capture, and trusted visual evaluator handoff. CI remains isolated and does not access real staging or commercial targets.
+- Render real WordPress page content for WooCommerce cart/checkout, deterministically provision their owned fixture shortcodes, and require candidate capture to prove final routes, visible semantic state, isolated sessions, and the fixed 14-case contract before visual evaluation.
+- Recheck each order's fixture marker before cleanup deletion so an unexpectedly broad WooCommerce order query cannot remove sentinel or unrelated staging orders.
+- PR #8 staging MVP is superseded by the replacement architecture; Issue #4 remains open until its full acceptance evidence is complete.
+
 # Changelog
 
 ## Unreleased

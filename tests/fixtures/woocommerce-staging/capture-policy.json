@@ -1,0 +1,31 @@
+{
+  "authorization": "owned-staging",
+  "previewUrl": "http://127.0.0.1:8080",
+  "routes": [
+    {"page":"home","route":"/","states":[
+      {"id":"default","required":[{"selector":"body.home"}]},
+      {"id":"menu-open","action":"menuToggle","required":[{"selector":"body.home"},{"selector":".replica-menu.is-open"}]}
+    ]},
+    {"page":"category","route":"/product-category/replica-fixture/","states":[
+      {"id":"default","required":[{"selector":"body.tax-product_cat"},{"selector":"ul.products"}]}
+    ]},
+    {"page":"product","route":"/product/replica-fixture-001/","states":[
+      {"id":"default","required":[{"selector":"body.single-product"},{"selector":"div.product"}]}
+    ]},
+    {"page":"cart","route":"/cart/","states":[
+      {"id":"default","expectedPath":"/cart/","required":[{"selector":".cart-empty"}],"forbidden":[{"selector":".woocommerce-cart-form__cart-item"}]},
+      {"id":"cart-nonempty","action":"addFixture","expectedPath":"/cart/","before":[{"selector":".cart-empty"}],"required":[{"selector":".woocommerce-cart-form__cart-item","minCount":1,"text":"Replica Fixture 001"}],"forbidden":[{"selector":".cart-empty"}]}
+    ]},
+    {"page":"checkout","route":"/checkout/","states":[
+      {"id":"default","setupRoute":"/cart/","action":"addFixture","expectedPath":"/checkout/","before":[{"selector":".cart-empty"}],"required":[{"selector":"body.woocommerce-checkout"},{"selector":"form.woocommerce-checkout"}]}
+    ]}
+  ],
+  "viewports": [
+    {"id":"desktop","width":1440,"height":1000},
+    {"id":"mobile","width":390,"height":844}
+  ],
+  "ownedSelectors": {
+    "menuToggle":"[data-replica-menu-toggle]",
+    "addFixture":"[data-replica-add-fixture]"
+  }
+}

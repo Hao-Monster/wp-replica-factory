@@ -1,0 +1,11 @@
+/*
+Theme Name: Replica WooCommerce Fixture
+Description: Generic framework fixture theme for staging and candidate capture tests.
+Version: 1.0.0
+Text Domain: replica-woocommerce
+*/
+:root{font-family:system-ui,sans-serif;color:#161616;background:#fff}
+body{margin:0}.replica-header{padding:16px;border-bottom:1px solid #ddd;display:flex;gap:16px;align-items:center}
+.replica-menu{display:none}.replica-menu.is-open{display:flex;gap:12px}
+.replica-main{max-width:1100px;margin:0 auto;padding:24px}
+.replica-fixture-button{display:inline-block;padding:8px 12px;border:1px solid #222;text-decoration:none}
