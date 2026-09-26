@@ -7,6 +7,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820028e7 # v4
+        with: {node-version: '24.12.0'}
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
       - name: Start isolated WordPress database
         run: docker compose -f docker-compose.woocommerce-staging.yml up -d
@@ -19,8 +21,11 @@ jobs:
           docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp option update replica_staging_marker replica-fixture --allow-root
       - name: Build deterministic theme from owned reference bundle
         run: |
-          python scripts/fixture_site.py seed --run-dir .replica/owned-site
-          python adapters/wordpress-staging/build.py --reference-bundle .replica/owned-site
+          npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
+          node tools/downloader/node_modules/playwright/cli.js install chromium
+          node tests/downloader/acceptance.mjs
+          bundle=$(python -c "import json; print(json.load(open('.replica/downloader-acceptance.json'))['primary_download'])")
+          python adapters/wordpress-staging/build.py --reference-bundle "$bundle"
       - name: Upload and activate theme, seed fixture, and health check
         run: |
           docker cp .replica/artifacts/$(ls .replica/artifacts)/replica-theme.zip $(docker compose -f docker-compose.woocommerce-staging.yml ps -q wordpress):/tmp/replica-theme.zip
