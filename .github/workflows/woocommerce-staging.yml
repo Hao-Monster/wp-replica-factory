@@ -64,7 +64,8 @@ jobs:
             docker run --rm --network "$NET" --volumes-from "$CID" -w /var/www/html --env-file "$ENV_FILE" wordpress:cli wp "$@" --path=/var/www/html --allow-root
           }
           wpcli core install --url=http://127.0.0.1:8080 --title='Replica Fixture' --admin_user=replica --admin_password='fixture-admin-only' --admin_email=replica@example.invalid --skip-email
-          wpcli config set WP_ENVIRONMENT_TYPE staging --raw
+          wpcli config set WP_ENVIRONMENT_TYPE staging --type=constant
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress php -l /var/www/html/wp-config.php
           test "$(wpcli eval 'echo wp_get_environment_type();')" = staging
           wpcli plugin install woocommerce --version=10.0.4 --activate
           wpcli option update permalink_structure '/%postname%/'
