@@ -1,0 +1,203 @@
+{
+  "fixture_version": "1.0.0",
+  "resources": [
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/aurora-mug.svg",
+      "sha256": "107b3f729e9e4f3cd263a8721a130564db7b991380a1b76652f03d838684eb4e",
+      "source": "self-authored fixture",
+      "type": "image"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/cedar-tote.svg",
+      "sha256": "b56e9a9856d32fcc0893615fba1606ec1fd1cfc738f53a45b40648c3960cb2f2",
+      "source": "self-authored fixture",
+      "type": "image"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/fern-pattern.svg",
+      "sha256": "b306cf0ba44c1213ca005a2cafd5be3931a19a43f93c04efe9fecd854f4825e5",
+      "source": "self-authored fixture",
+      "type": "image"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/field-notebook.svg",
+      "sha256": "32f9d0ce53356365af63b9b7eae630729b1d3afa4d8b844553baac4a371b7993",
+      "source": "self-authored fixture",
+      "type": "image"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/filters.js",
+      "sha256": "119a0fa743c9297358e2cee0c47af1aad7b71961683e4676463c8286ec3e10e3",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/FixtureSans-Regular.ttf",
+      "sha256": "1b08e7fc267a5c7e1d614100f604b83e7e8a0be241f0f288faa2b3ac93a683ba",
+      "source": "Google Fonts Inter, SIL Open Font License 1.1",
+      "type": "font"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/FixtureSans-Semibold.ttf",
+      "sha256": "e7a1aaf7eda9f2fad4131725fa556265ec75ca7b2d756260173a040363e8d4f7",
+      "source": "Google Fonts Inter, SIL Open Font License 1.1",
+      "type": "font"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/grid.js",
+      "sha256": "6ad8edaac4037791223b326cd33c9204fef3c1ca87f0a8006cd4198e8227465b",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/lazy.js",
+      "sha256": "d4e4a6623c387bcf6a7e62a617e88343a41108477ca87cdfa76f04b003d5990e",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/orbit-lamp.svg",
+      "sha256": "c37512aa16d15f7ef48301fdb167691404ba19fa766b9b61e68e5c5c7dc06230",
+      "source": "self-authored fixture",
+      "type": "image"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/site.css",
+      "sha256": "a6d274d72e8da49aaa72f84446ee0c69a598d1d456739acded841fa027a9fa07",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "assets/site.js",
+      "sha256": "f6c3072305a2af430d657a69e387eba289d257efed020c57a3b4759560f7e249",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "data/products.json",
+      "sha256": "09177473db0aa1739287a1aaa24ea4bcbe2eea66e64738b34b3e87a5a9b435c3",
+      "source": "repository fixture",
+      "type": "data"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "filters.html",
+      "sha256": "c209d10a0d1331ff9113430762d3ce636e3d58a78bf7656a289ba46f25643bd6",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "grid.html",
+      "sha256": "dec2d74cca039eeb9a4d6032e477110f71f240f111c90b956c9072d030bd4ed8",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "index.html",
+      "sha256": "005bb0b87260f8c0d49fbe33945ff69ea63de4749f7ff07b61cc74f6eb698dcd",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "lazy.html",
+      "sha256": "9159bcd582c18b947c733f3b12c3739fe459da8e17fd21e18ff62e3596ad1806",
+      "source": "repository fixture",
+      "type": "source"
+    },
+    {
+      "pages": [
+        "/grid.html",
+        "/lazy.html",
+        "/filters.html"
+      ],
+      "path": "STATE_MATRIX.json",
+      "sha256": "1f72efb804cfb285b89557929a8f6437cc3da8bc174e17a828d65ff83689f40a",
+      "source": "repository fixture",
+      "type": "data"
+    }
+  ]
+}

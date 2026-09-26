@@ -10,6 +10,7 @@
 - 首次上传 GitHub：`docs/GITHUB_OPERATIONS.zh-CN.md`。
 - 交给 IDE 的首次仓库托管任务：`prompts/GITHUB_SETUP.zh-CN.md`。
 - 每次框架改进：`prompts/IMPROVE_FACTORY.zh-CN.md` 与 `CONTRIBUTING.md`。
+- 自有测试站：`docs/FIXTURE_SITE.zh-CN.md`。
 - 平台建设技术规格：`BOOTSTRAP_AGENT_PROMPT.zh-CN.md`。
 - 建设优先级：`ROADMAP.md`。
 - 多站点复用与升级：`docs/VERSIONING_AND_REUSE.zh-CN.md`。
