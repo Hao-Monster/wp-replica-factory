@@ -73,6 +73,8 @@ export class NetworkGuard {
       return {allowed:true,url:u.href,addresses:[{address:'127.0.0.1',family:4}],metadataOnly:false};
     }
     if(u.protocol!=='https:')return {allowed:false,...record(this.failures,{reason:'scheme_blocked',url:sanitizeUrl(u.href,this.policy.sensitiveQueryKeys),method})};
+    const hostname=u.hostname.toLowerCase().replace(/^\[|\]$/g,'').replace(/\.$/,'');
+    if(hostname==='localhost'||hostname.endsWith('.localhost'))return {allowed:false,...record(this.failures,{reason:'private_address',url:sanitizeUrl(u.href,this.policy.sensitiveQueryKeys),address:hostname,first_seen_page:firstSeenPage})};
     if(kind!=='proxy'&&!['GET','HEAD'].includes(method))return {allowed:false,...record(this.failures,{reason:'blocked_business_request',url:sanitizeUrl(u.href,this.policy.sensitiveQueryKeys),method,resource_type:resourceType,first_seen_page:firstSeenPage})};
     let addresses;
     try {addresses=await this.resolver(u.hostname);} catch(error){return {allowed:false,...record(this.failures,{reason:'dns_failed',url:sanitizeUrl(u.href,this.policy.sensitiveQueryKeys),detail:error.message})};}
