@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { newOutput, safeFile, mapPath, exitCode, policyFor, normalizeUrl, bodyProblem, coreDigest } from '../../tools/downloader/core.mjs';
 import { verify } from '../../tools/downloader/verify.mjs';
+import { createNetworkGuard, isBlockedAddress, sanitizeUrl } from '../../tools/downloader/network-guard.mjs';
 
 test('query order, case and Windows-reserved names never alias', () => {
   const urls = ['/a?x=1&y=2','/a?y=2&x=1','/a?x=2','/A','/a','/CON','/%E4%B8%AD%20%E6%96%87'];
@@ -65,4 +66,39 @@ test('empty evidence and internal failure cannot pass', () => {
     assert.equal(exitCode('complete'),0);
     for (const state of ['partial','failed','blocked','unknown']) assert.notEqual(exitCode(state),0);
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+
+test('authorized-public policy requires explicit HTTPS origins',()=>{
+  assert.throws(()=>policyFor({mode:'authorized-public',url:'https://public.test/'}));
+  assert.throws(()=>policyFor({mode:'authorized-public',url:'http://public.test/',pageOrigins:['http://public.test'],assetOrigins:['http://public.test']}));
+  assert.throws(()=>policyFor({mode:'authorized-public',url:'https://public.test/',pageOrigins:['https://public.test'],assetOrigins:['*']}));
+  const p=policyFor({mode:'authorized-public',url:'https://public.test/',pageOrigins:['https://public.test'],assetOrigins:['https://public.test'],publicGetFixtures:['https://public.test/data.json']});
+  assert.equal(p.mode,'authorized-public');assert.equal(p.maxRedirects,10);
+});
+test('public address guard rejects required private IPv4 and IPv6 ranges',()=>{
+  for(const ip of ['127.0.0.1','10.0.0.1','172.16.0.1','192.168.1.1','169.254.169.254','100.64.0.1','0.1.2.3','::1','::','fc00::1','fd00::1','fe80::1','::ffff:127.0.0.1'])assert.equal(isBlockedAddress(ip),true,ip);
+  assert.equal(isBlockedAddress('203.0.113.10'),false);
+  assert.equal(isBlockedAddress('2001:4860:4860::8888'),false);
+});
+test('DNS private resolution and rebinding are blocked on every inspection',async()=>{
+  const policy=policyFor({mode:'authorized-public',url:'https://public.test/',pageOrigins:['https://public.test'],assetOrigins:['https://public.test']});
+  let calls=0;
+  const guard=createNetworkGuard(policy,[],{resolver:async()=>[{address:++calls===1?'203.0.113.10':'10.0.0.9',family:4}]});
+  assert.equal((await guard.inspect('https://public.test/',{kind:'page'})).allowed,true);
+  const second=await guard.inspect('https://public.test/next',{kind:'page'});
+  assert.equal(second.allowed,false);assert.equal(second.reason,'private_address');
+});
+test('unknown public origin needs approval and write methods are blocked',async()=>{
+  const policy=policyFor({mode:'authorized-public',url:'https://public.test/',pageOrigins:['https://public.test'],assetOrigins:['https://public.test']});
+  const resolver=async()=>[{address:'203.0.113.10',family:4}];
+  const guard=createNetworkGuard(policy,[],{resolver});
+  const cdn=await guard.inspect('https://cdn.test/a.js',{kind:'asset',resourceType:'script',firstSeenPage:'https://public.test/'});
+  assert.equal(cdn.reason,'needs_approval');assert.equal(cdn.origin,'https://cdn.test');
+  const post=await guard.inspect('https://public.test/write',{kind:'asset',method:'POST',resourceType:'fetch',firstSeenPage:'https://public.test/'});
+  assert.equal(post.reason,'blocked_business_request');
+});
+test('public URL sanitization removes configured query values',()=>{
+  assert.equal(sanitizeUrl('https://public.test/a?x=1&canary=SECRET_CANARY_QUERY',['canary']),'https://public.test/a?x=1&canary=%3Credacted%3E');
+  assert.equal(exitCode('exhausted'),4);
 });
