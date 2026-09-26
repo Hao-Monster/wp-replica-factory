@@ -19,6 +19,14 @@ class FixtureSiteTests(unittest.TestCase):
         temp=tempfile.TemporaryDirectory(prefix='fixture-sandbox-'); root=Path(temp.name); (root/fs.SANDBOX_MARKER).write_text('owned-test-sandbox\n',encoding='utf-8'); return temp,root
     def run_cmd(self,*args):
         return __import__('subprocess').run([sys.executable,'-X','utf8',str(SCRIPT),*args],cwd=ROOT,text=True,capture_output=True,timeout=30)
+    def sync_state_matrix_manifest(self,copied,matrix):
+        matrix_path=copied/'STATE_MATRIX.json'
+        matrix_path.write_text(json.dumps(matrix,separators=(',',':'))+'\n',encoding='utf-8')
+        manifest_path=copied/'RESOURCE_MANIFEST.json'
+        manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+        entry=next(resource for resource in manifest['resources'] if resource['path']=='STATE_MATRIX.json')
+        entry['sha256']=fs.sha(matrix_path)
+        manifest_path.write_text(json.dumps(manifest,indent=2)+'\n',encoding='utf-8')
     def test_seed_is_idempotent_and_manifest_is_complete(self):
         temp,root=self.sandbox()
         try:
@@ -27,6 +35,15 @@ class FixtureSiteTests(unittest.TestCase):
             self.assertEqual(json.loads(a.stdout)['product_ids'],json.loads(b.stdout)['product_ids'])
             self.assertEqual(json.loads((run/'resource-manifest.json').read_text())['fixture_version'],'1.0.0')
         finally: temp.cleanup()
+    def test_complete_state_contract_reports_page_and_state_counts(self):
+        summary=fs.verify_fixture()
+        self.assertEqual(summary['page_count'],3)
+        self.assertEqual(summary['state_count'],11)
+        _,contract=fs.load_state_matrix()
+        for page_id,required in fs.REQUIRED_STATES.items():
+            actual={state['state_id'] for state in contract['pages_by_id'][page_id]['states']}
+            self.assertTrue(required.issubset(actual))
+
     def test_reset_rejects_unowned_directory_and_preserves_sentinel(self):
         temp,root=self.sandbox()
         try:
@@ -116,11 +133,41 @@ class FixtureSiteTests(unittest.TestCase):
             self.assertEqual(fs.health(f'http://127.0.0.1:{server.server_port}',run),1); self.assertEqual(SinkHandler.hits,0)
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=2); sink.shutdown(); sink.server_close(); sink_thread.join(timeout=2); temp.cleanup()
-    def test_missing_required_state_is_rejected(self):
+    def test_missing_filter_required_state_is_rejected(self):
         temp,root=self.sandbox(); copied=root/'owned-site'; shutil.copytree(fs.FIXTURE,copied); original=fs.FIXTURE; fs.FIXTURE=copied
         try:
-            matrix=json.loads((copied/'STATE_MATRIX.json').read_text()); matrix['pages']=matrix['pages'][:2]; (copied/'STATE_MATRIX.json').write_text(json.dumps(matrix),encoding='utf-8')
-            with self.assertRaises(RuntimeError): fs.seed(copied/'run')
+            matrix=json.loads((copied/'STATE_MATRIX.json').read_text())
+            page=next(page for page in matrix['pages'] if page['page_id']=='filters')
+            page['states']=[state for state in page['states'] if state['state_id']!='filter-bags']
+            self.sync_state_matrix_manifest(copied,matrix)
+            self.assertEqual(json.loads((copied/'RESOURCE_MANIFEST.json').read_text()),fs.calculated_manifest())
+            with self.assertRaisesRegex(RuntimeError,r'missing required state in filters.*filter-bags'):
+                fs.verify_fixture()
+        finally: fs.FIXTURE=original; temp.cleanup()
+
+    def test_missing_lazy_required_state_is_rejected(self):
+        temp,root=self.sandbox(); copied=root/'owned-site'; shutil.copytree(fs.FIXTURE,copied); original=fs.FIXTURE; fs.FIXTURE=copied
+        try:
+            matrix=json.loads((copied/'STATE_MATRIX.json').read_text())
+            page=next(page for page in matrix['pages'] if page['page_id']=='lazy')
+            page['states']=[state for state in page['states'] if state['state_id']!='lazy-loaded']
+            self.sync_state_matrix_manifest(copied,matrix)
+            self.assertEqual(json.loads((copied/'RESOURCE_MANIFEST.json').read_text()),fs.calculated_manifest())
+            with self.assertRaisesRegex(RuntimeError,r'missing required state in lazy.*lazy-loaded'):
+                fs.verify_fixture()
+        finally: fs.FIXTURE=original; temp.cleanup()
+
+    def test_duplicate_state_id_is_rejected(self):
+        temp,root=self.sandbox(); copied=root/'owned-site'; shutil.copytree(fs.FIXTURE,copied); original=fs.FIXTURE; fs.FIXTURE=copied
+        try:
+            matrix=json.loads((copied/'STATE_MATRIX.json').read_text())
+            page=next(page for page in matrix['pages'] if page['page_id']=='filters')
+            duplicate=next(state for state in page['states'] if state['state_id']=='filter-bags')
+            page['states'].append(dict(duplicate))
+            self.sync_state_matrix_manifest(copied,matrix)
+            self.assertEqual(json.loads((copied/'RESOURCE_MANIFEST.json').read_text()),fs.calculated_manifest())
+            with self.assertRaisesRegex(RuntimeError,r'duplicate state_id in filters.*filter-bags'):
+                fs.verify_fixture()
         finally: fs.FIXTURE=original; temp.cleanup()
     def test_duplicate_seed_data_is_rejected(self):
         temp,root=self.sandbox(); copied=root/'owned-site'; shutil.copytree(fs.FIXTURE,copied); original=fs.FIXTURE; fs.FIXTURE=copied
