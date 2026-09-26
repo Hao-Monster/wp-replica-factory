@@ -8,7 +8,7 @@
   <button type="button" data-replica-menu-toggle>Menu</button>
   <nav class="replica-menu" data-replica-menu>
     <a href="<?php echo esc_url(home_url('/shop/')); ?>">Shop</a>
-    <a href="<?php echo esc_url(wc_get_cart_url()); ?>">Cart</a>
+    <a href="<?php echo esc_url(wc_get_cart_url()); ?>">Cart <span data-replica-cart-count><?php echo esc_html((string) ((function_exists('WC') && WC()->cart) ? WC()->cart->get_cart_contents_count() : 0)); ?></span></a>
   </nav>
   <?php
   if (function_exists('wc_get_product_id_by_sku')) {

@@ -96,6 +96,15 @@ class EnvironmentGateTests(unittest.TestCase):
         with mock.patch.object(adapter,"run_wp_cli",return_value=""):
             with self.assertRaises(staging.Blocked): adapter.require_wordpress_environment()
 
+    def test_doctor_reports_blocked_when_runtime_is_production(self):
+        adapter=staging.StagingAdapter(base_config(), runner=FakeRunner())
+        with (
+            mock.patch.object(adapter,"run_wp_cli",return_value="production"),
+            mock.patch.object(adapter,"wp_cli_mode",return_value="ephemeral-wordpress-cli"),
+            mock.patch.object(adapter,"web_runtime_health",return_value={"status":"pass","requests":[]}),
+        ):
+            self.assertEqual(adapter.doctor()["status"],"blocked")
+
     def test_development_only_allowed_by_policy(self):
         cfg=base_config(); cfg["policy"]["allowDevelopment"]=True
         adapter=staging.StagingAdapter(cfg, runner=FakeRunner())
@@ -190,6 +199,21 @@ class SideEffectGateTests(unittest.TestCase):
             report=adapter.gate_report()
             self.assertEqual(report["THEME_DEPLOY_GATE"],"PASS")
             self.assertEqual(report["ORDER_GATE"],"BLOCKED")
+
+    def test_cleanup_uses_owned_marker_and_hpos_safe_order_api(self):
+        adapter=staging.StagingAdapter(base_config(), runner=FakeRunner())
+        seen=[]
+        with (
+            mock.patch.object(adapter,"require_wordpress_environment",return_value="staging"),
+            mock.patch.object(adapter,"_runtime_option",return_value="replica-fixture"),
+            mock.patch.object(adapter,"run_wp_cli",side_effect=lambda args: seen.append(args) or "{}"),
+        ):
+            result=adapter.cleanup(fixture=True)
+        self.assertEqual(result["status"],"cleaned")
+        code=next(args[1] for args in seen if args[0]=="eval")
+        self.assertIn("wc_get_orders",code)
+        self.assertIn("_replica_fixture_marker",code)
+        self.assertNotIn("TRUNCATE",code.upper())
 
 if __name__=="__main__":
     unittest.main()

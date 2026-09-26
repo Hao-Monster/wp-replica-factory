@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import {captureCandidate} from '../tools/candidate-capture/cli.mjs';
+import {captureCandidate,handoffCandidate} from '../tools/candidate-capture/cli.mjs';
 import {evaluate,verifyReport} from '../tools/visual-evaluator/evaluate.mjs';
 import {readPng,writePng,sha} from '../tools/visual-evaluator/image-diff.mjs';
 
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'candidate-capture-'));
 const server=http.createServer((req,res)=>{
   res.setHeader('content-type','text/html');
-  res.end(`<!doctype html><html><head><style>body{font:16px sans-serif;margin:0}.menu{display:none}.menu.open{display:block}.box{width:180px;height:80px;border:1px solid #222;margin:20px}</style></head><body><button data-replica-menu-toggle>menu</button><div class="menu">owned menu</div><button data-replica-add-fixture>add fixture</button><div class="box">${req.url}</div><script>document.querySelector('[data-replica-menu-toggle]').onclick=()=>document.querySelector('.menu').classList.add('open');document.querySelector('[data-replica-add-fixture]').onclick=()=>document.body.dataset.cart='nonempty';</script></body></html>`);
+  res.end(`<!doctype html><html><head><style>body{font:16px sans-serif;margin:0}.menu{display:none}.menu.open{display:block}.box{width:180px;height:80px;border:1px solid #222;margin:20px}</style></head><body><button data-replica-menu-toggle>menu</button><div class="menu">owned menu</div><button data-replica-add-fixture>add fixture</button><div class="box">${req.url}</div><script>document.querySelector('[data-replica-menu-toggle]').onclick=()=>document.querySelector('.menu').classList.add('open');document.querySelector('[data-replica-add-fixture]').onclick=()=>{document.body.dataset.cart='nonempty';document.querySelector('.box').textContent='cart-nonempty';};</script></body></html>`);
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
@@ -39,6 +39,10 @@ const bm=JSON.parse(fs.readFileSync(path.join(baseline,'manifest.json')));bm.bas
 const visualPolicy=path.join(root,'visual-policy.json');fs.writeFileSync(visualPolicy,JSON.stringify({pixel:{maxDifferentRatio:0,maxMeanAbsoluteError:0},maxCandidateAgeMinutes:30,requiredStates:manifest.screenshots.map(x=>({page:x.page,viewport:x.viewport,state:x.state})),regions:[],failOnMissingImages:true}));
 const exactOut=path.join(root,'visual-exact');let report=evaluate({baseline,candidate,policy:visualPolicy,out:exactOut});
 assert.equal(report.overall_status,'pass');assert.equal(verifyReport(exactOut).status,'verified');
+const handoff=await handoffCandidate({capturePolicy:policyFile,out:path.join(root,'handoff-candidate'),baseline,visualPolicy,visualOut:path.join(root,'handoff-visual')});
+assert.equal(handoff.visual_status,'pass');
+assert.equal(handoff.candidate_manifest_sha,sha(path.join(root,'handoff-candidate','manifest.json')));
+assert.ok(handoff.core_report_sha256);
 
 const mismatch=path.join(root,'mismatch');fs.cpSync(candidate,mismatch,{recursive:true});
 const mm=JSON.parse(fs.readFileSync(path.join(mismatch,'manifest.json')));const shot=path.join(mismatch,mm.screenshots[0].path);
@@ -48,4 +52,4 @@ report=evaluate({baseline,candidate:mismatch,policy:visualPolicy,out:path.join(r
 const stale=path.join(root,'stale');fs.cpSync(candidate,stale,{recursive:true});
 const sm=JSON.parse(fs.readFileSync(path.join(stale,'manifest.json')));for(const row of sm.screenshots)row.timestamp='2000-01-01T00:00:00Z';fs.writeFileSync(path.join(stale,'manifest.json'),JSON.stringify(sm));
 report=evaluate({baseline,candidate:stale,policy:visualPolicy,out:path.join(root,'visual-stale')});assert.ok(report.summary.failures.includes('stale_candidate'));
-server.close();console.log(JSON.stringify({status:'complete',screenshots:manifest.screenshots.length,checks:7}));
+server.close();console.log(JSON.stringify({status:'complete',screenshots:manifest.screenshots.length,checks:10}));

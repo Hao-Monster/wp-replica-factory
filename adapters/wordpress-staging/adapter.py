@@ -516,8 +516,9 @@ class StagingAdapter:
             cli_environment = self.run_wp_cli(["eval", "echo wp_get_environment_type();"]).strip()
         except AdapterError:
             pass
+        gates = self.gate_report()
         return {
-            "status": "ready" if cli_environment else "blocked",
+            "status": "ready" if gates["THEME_DEPLOY_GATE"] == "PASS" else "blocked",
             "runtime": self.runtime["type"],
             "wpCliMode": self.wp_cli_mode(),
             "cliRuntime": {
@@ -525,7 +526,7 @@ class StagingAdapter:
                 "note": "CLI is_ssl() is not used as Web HTTPS evidence",
             },
             "webRuntimeHealth": self.web_runtime_health(),
-            "gates": self.gate_report(),
+            "gates": gates,
         }
 
     def validate_artifact(self, artifact, manifest_path):
@@ -773,12 +774,15 @@ echo json_encode(['marker'=>$marker,'skus'=>$skus]);
         marker = self.cfg["fixtureMarker"]
         code = f"""
 $marker={json.dumps(marker)};
-$q=new WP_Query(['post_type'=>['product','shop_order'],'post_status'=>'any','posts_per_page'=>-1,
+$products=new WP_Query(['post_type'=>'product','post_status'=>'any','posts_per_page'=>-1,
   'meta_key'=>'_replica_fixture_marker','meta_value'=>$marker,'fields'=>'ids']);
-foreach($q->posts as $id){{wp_delete_post($id,true);}}
+foreach($products->posts as $id){{wp_delete_post($id,true);}}
+$orders=wc_get_orders(['limit'=>-1,'type'=>'shop_order','return'=>'objects',
+  'meta_query'=>[['key'=>'_replica_fixture_marker','value'=>$marker]]]);
+foreach($orders as $order){{$order->delete(true);}}
 $term=get_term_by('slug','replica-fixture','product_cat');
 if($term && !is_wp_error($term)){{wp_delete_term($term->term_id,'product_cat');}}
-echo json_encode(['deleted'=>count($q->posts),'marker'=>$marker]);
+echo json_encode(['deleted_products'=>count($products->posts),'deleted_orders'=>count($orders),'marker'=>$marker]);
 """
         raw = self.run_wp_cli(["eval", code])
         return {"status": "cleaned", "marker": marker, "runtime": raw}
