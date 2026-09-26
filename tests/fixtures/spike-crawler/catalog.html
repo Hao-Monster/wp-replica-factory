@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Owned Fixture - Catalog</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a id="nav-home" href="/">Home</a>
+      <a id="nav-catalog" href="/catalog.html">Catalog</a>
+      <a id="nav-about" href="/about.html">About Us</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Product Catalog</h1>
+    <div class="actions">
+      <!-- Click triggers primary panel -->
+      <button id="filter-btn" type="button" aria-expanded="false" aria-controls="filter-panel">Open Filter Panel</button>
+    </div>
+
+    <!-- Primary Panel: initially hidden -->
+    <div id="filter-panel" class="panel hidden" style="display: none;" role="region" aria-label="Filter Options">
+      <h2>Filters</h2>
+      <p>Filter products by category, price, and specs.</p>
+      
+      <!-- Secondary Expand Trigger inside panel -->
+      <button id="expand-category-btn" type="button" aria-expanded="false" aria-controls="category-panel">Expand Categories</button>
+
+      <!-- Secondary Panel: initially hidden -->
+      <div id="category-panel" class="secondary-panel hidden" style="display: none;">
+        <h3>Category Selections</h3>
+        <label><input type="checkbox" name="cat" value="audio"> Audio Gear</label>
+        <label><input type="checkbox" name="cat" value="optics"> Optics</label>
+      </div>
+    </div>
+
+    <section class="catalog-grid">
+      <img id="catalog-lazy-img" class="lazy-load" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23ccc'/%3E%3C/svg%3E" data-src="/assets/lazy-catalog.png" alt="Lazy Catalog Asset" />
+    </section>
+  </main>
+
+  <script>
+    const filterBtn = document.getElementById('filter-btn');
+    const filterPanel = document.getElementById('filter-panel');
+    const expandBtn = document.getElementById('expand-category-btn');
+    const categoryPanel = document.getElementById('category-panel');
+
+    filterBtn.addEventListener('click', () => {
+      const isHidden = filterPanel.style.display === 'none';
+      filterPanel.style.display = isHidden ? 'block' : 'none';
+      filterBtn.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    expandBtn.addEventListener('click', () => {
+      const isHidden = categoryPanel.style.display === 'none';
+      categoryPanel.style.display = isHidden ? 'block' : 'none';
+      expandBtn.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const img = document.getElementById('catalog-lazy-img');
+        if (img && img.dataset.src) {
+          img.src = img.dataset.src;
+          img.classList.add('loaded');
+        }
+      }, 50);
+    });
+  </script>
+</body>
+</html>
