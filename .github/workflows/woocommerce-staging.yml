@@ -55,6 +55,7 @@ jobs:
             test "$i" -lt 60 || exit 1
             sleep 2
           done
+          sudo chmod -R a+rwX .replica/ci-wp
           CID="$(docker compose -f docker-compose.woocommerce-staging.yml ps -q wordpress)"
           test -n "$CID"
           NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$CID" | head -n1)"
@@ -71,6 +72,8 @@ jobs:
           wpcli option update replica_real_payment_disabled 1
           wpcli option update replica_mail_disabled 1
           wpcli option update replica_external_inventory_sync_disabled 1
+          sudo chown -R "$USER":"$(id -gn)" .replica/ci-wp
+          sudo chmod -R u+rwX,go+rX .replica/ci-wp
           mkdir -p .replica/ci-wp/wp-content/mu-plugins
           cat >.replica/ci-wp/wp-content/mu-plugins/replica-fixture-safety.php <<'PHP'
           <?php
