@@ -20,6 +20,7 @@ CSS/网络诊断按实际可用 Chrome DevTools 工具列表执行，不硬编�
 素材清单包含 currentSrc/srcset、背景图、SVG、字体、媒体类型、哈希、显示尺寸、裁剪、授权与本地路径。
 只保存允许的静态素材；不导入参考站第三方追踪、支付脚本、密钥或原站业务 API。
 下载器须验证每次重定向后的协议和目的地址；阻断内网、环回、云元数据及 DNS rebinding。开发站访问使用另一独立 allowlist。
+遇到 login/password/CAPTCHA/MFA/bot/WAF challenge、403 access denied 或 429 rate limit 时，接受 `blocked/challenge_detected` 和脱敏 `reports/challenge.json`，停止自动采集并转人工 reconnaissance；禁止绕过、刷新、点击 challenge、收集 cookie/token 或批准 challenge origin。页面 JavaScript error 记录到 `pageRuntimeErrors`，不能单独当作 Downloader crash。
 不要把任意 HTML、SVG 或 JS 响应当成安全图片；素材入库需要 MIME 和安全检查，SVG 需可信清洗流程。
 不要把 cookie、Authorization、敏感查询参数或未脱敏 HAR 提交进 Git。
 相同状态重复采集可检验基准稳定性；有漂移则标为 UNSTABLE，不自动提高容差。

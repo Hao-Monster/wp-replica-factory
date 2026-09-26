@@ -8,6 +8,7 @@ export function verify(root,{requirePreview=false}={}) {
     noLinks(root);
     check(fs.readFileSync(safeFile(root,'.downloader-owned'),'utf8')===SCHEMA+'\n','ownership marker');
     const m=readJSON(root,'manifest.json'),rs=readJSON(root,'resources.json'),rt=readJSON(root,'routes.json'),report=readJSON(root,'reports/download.json');
+    check(m.status!=='blocked','blocked reference capture'+(m.reason?': '+m.reason:''));
     check(m.schema===SCHEMA&&typeof m.run_id==='string'&&m.run_id.length>10,'manifest schema/run_id');
     check(m.status==='complete','download status '+m.status);
     check(report.schema===1&&report.status===m.status&&report.run_id===m.run_id,'download report structure/status');

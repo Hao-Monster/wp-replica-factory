@@ -36,6 +36,8 @@ jobs:
         run: node tests/downloader/acceptance.mjs
       - name: Controlled authorized-public HTTPS, DNS and write-safety checks
         run: node tests/downloader/public-mvp.mjs
+      - name: Controlled challenge classification and runtime-error isolation
+        run: node tests/downloader/challenge.mjs
       - name: Collect only allowlisted owned evidence
         if: always()
         run: python tests/downloader/collect-ci-evidence.py

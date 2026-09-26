@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add challenge-aware public capture diagnostics with controlled AWS-like fixtures. Challenge pages stop capture with `blocked` / `challenge_detected`; page runtime errors are recorded separately and do not alone fail an otherwise valid capture. No WAF/CAPTCHA bypass is introduced.
+
+## Unreleased
+
 - 新增独立 Node 下载器 v0.1，选择性复用固定 OpenDesign web-clone 子集，保留其目录 MIT 许可和根许可说明。
 - 新增 download/verify/preview/compare：真实浏览器响应体、三页发现、query/内容变体映射、CSS/HTML 解析改写、独立预览和原生 HAR。
 - owned fixture 已作为框架正式组成部分进入 `main`；Downloader 直接使用当前 checkout 的 fixture、required-state contract 与运行时数据，自有站双视口和断源菜单/筛选/懒加载验证不依赖外部 PR checkout。
