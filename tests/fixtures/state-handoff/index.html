@@ -28,6 +28,16 @@
     <section class="hero-section">
       <h1>Autonomous Framework Verification</h1>
       <p>Demonstrating explicit interactive state completeness and original resource handoff.</p>
+      <!-- Delay test controls -->
+      <button id="delay-trigger-btn" type="button">Trigger Delayed Panel</button>
+      <div id="delay-target" style="display: none;">Delayed Panel Appeared</div>
+      <!-- Partial visibility test elements -->
+      <div id="partial-list">
+        <span class="partial-item">Visible Item 1</span>
+        <span class="partial-item" style="display: none;">Hidden Item 2</span>
+      </div>
+      <!-- Broken restore trigger -->
+      <button id="broken-restore-btn" type="button">Broken Restore</button>
     </section>
   </main>
 
@@ -52,6 +62,7 @@
           '        <line x1="6" y1="6" x2="18" y2="18"></line>',
           '      </svg>',
           '    </button>',
+          '    <button id="broken-close-btn" type="button" style="opacity: 0; width: 20px; height: 20px;">Broken Close</button>',
           '  </div>',
           '  <div class="dialog-body">',
           '    <div class="active-region">',
@@ -77,6 +88,15 @@
 
         portalEl.querySelector('#region-close-btn').addEventListener('click', function() {
           closePortal();
+        });
+
+        portalEl.querySelector('#broken-close-btn').addEventListener('click', function() {
+          // Closes portal but intentionally fails to restore trigger button
+          if (portalEl && document.body.contains(portalEl)) {
+            document.body.removeChild(portalEl);
+          }
+          portalEl = null;
+          document.getElementById('region-trigger-btn').style.display = 'none';
         });
 
         portalEl.querySelector('#lang-dropdown-btn').addEventListener('click', function() {
@@ -118,6 +138,23 @@
 
       document.getElementById('broken-region-btn').addEventListener('click', function() {
         console.log('Broken trigger clicked; state not modified');
+      });
+
+      document.getElementById('delay-trigger-btn').addEventListener('click', function() {
+        setTimeout(function() {
+          var t = document.getElementById('delay-target');
+          if (t) t.style.display = 'block';
+        }, 100);
+      });
+
+      document.getElementById('broken-restore-btn').addEventListener('click', function() {
+        // Closes portal but intentionally fails to restore trigger button attributes or creates remnant
+        if (portalEl && document.body.contains(portalEl)) {
+          document.body.removeChild(portalEl);
+        }
+        portalEl = null;
+        // Intentionally keep aria-expanded="true" or hidden trigger
+        document.getElementById('region-trigger-btn').style.display = 'none';
       });
     })();
   </script>

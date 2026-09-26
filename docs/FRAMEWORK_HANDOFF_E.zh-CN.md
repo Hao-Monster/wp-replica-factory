@@ -25,7 +25,7 @@
    - Head commit：`05cde405acb556b786c707fe49963d2b7d4b890c`
    - 状态：**OPEN**（尚未合并至 main，作为待审核的只读前序成果）。
    - CI 验证记录：
-     - Staging core (36263681617, checkout SHA `daddb6f1554822ae9b55c6cc78f17e399a50282b`): 成功通过 14-case 视觉验收（0 差异像素）与清理所有权断言。订单后端确认运行在 legacy 模式。
+     - Staging core (36263681617, checkout SHA `daddb6f1554822ae9b55c6cc78f17e399a50282b`): 成功通过 14-case 视觉验收（0 差异像素）。注意：PR #12 的订单与商品 fixture 对象清理验证是在 WordPress 应用层核验测试数据所有权与安全回收，而 Docker Compose 容器与卷的销毁是流水线后置环境 teardown 步骤，两者不可混同。订单后端确认运行在 legacy 模式。
      - Framework checks (36263681585): 通过。
      - Downloader checks (36263681562): 通过。
      - Visual evaluator (36263681612): 通过。
@@ -50,10 +50,10 @@
   - 前置条件与动作序列执行
   - 后置断言验证（全局/Portal 选择器、真实可见性、文本/数量断言、路由核验）
   - 状态转移断言（`restores_state`）
-  - 组件资源扫描（`currentSrc`/`srcset` 未下载候选、CSS 背景图、inline SVG 摘要）
+  - 组件资源扫描（`currentSrc`/`srcset` 未下载候选、CSS 背景图、inline SVG 独立文件保存与摘要）
 - **完整性与防伪门禁**：
-  - `verifyStateHandoff`：严格检查全部必须状态与双视口证据；逐一核对资源磁盘文件与 SHA256。
-  - 阻断篡改：即使修改报告 `status=complete`，只要磁盘文件缺失或哈希不符立即阻断。
+  - `verifyStateHandoff`：严格检查全部必须状态定义数与用例数（状态×视口）；逐一核对资源磁盘文件与 SHA256。
+  - 阻断篡改：即使修改报告 `status=complete` 或伪造计数，只要磁盘文件缺失或哈希不符立即阻断。
 - **CI 自动化**：已在 `.github/workflows/downloader-tests.yml` 中接入 `node tests/downloader/state-handoff.mjs`。
 
 ---
@@ -61,7 +61,7 @@
 ## 4. 本地复现命令
 
 ```bash
-# 1. 运行本轮交互完整性与资源交接验收（包含正负例与两次一致性对比）
+# 1. 运行本轮交互完整性与资源交接验收（包含 13 项正负例与两次一致性对比）
 node tests/downloader/state-handoff.mjs
 
 # 2. 运行 Downloader 单元与公网测试

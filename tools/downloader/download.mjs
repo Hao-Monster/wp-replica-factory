@@ -104,7 +104,7 @@ export async function download(input,output,options={}) {
             }));
             const candidate=detectChallenge({url:route.url,status:response.status(),headers:await response.allHeaders(),title:await page.title(),body:challenge.html+' '+challenge.text,pageRuntimeErrors:pageRuntimeErrors.filter(e=>e.route===route.url),resources});
             if(candidate.detected) { challengeResult=candidate; throw new Error('challenge_detected'); }
-            await executeStateActionsWithAssertions(page, state, remaining);
+            await executeStateActionsWithAssertions(page, state, remaining, policy);
             await page.waitForLoadState('networkidle',{timeout:remaining()}).catch(()=>{});
             const scroll = (state.actions?.length && !state.actions.some(a=>a.type==='scroll'))
               ? { steps: 0, final_y: 0, scroll_height: 0 }
@@ -129,7 +129,7 @@ export async function download(input,output,options={}) {
             const evidence={capture_id,url:route.url,final_url:route.final_url,viewport,state:state.name,files:{}};
             for(const name of ['rendered.html','signals.json','screenshot.png']) {const rel=prefix+'/'+name;evidence.files[name]={path:rel,sha256:sha(fs.readFileSync(safeFile(root,rel)))};}
             captures.push(evidence);
-            const componentSnapshot=await inspectStateComponentResources(page,state,resources,root);
+            const componentSnapshot=await inspectStateComponentResources(page,state,resources,root,{capture_id,route:route.url,viewport,policy});
             stateResourceInventories.push(componentSnapshot);
             await listener.drain();
           } finally {await page.close();}
@@ -186,7 +186,7 @@ export async function download(input,output,options={}) {
   if(policy.required_states?.length || policy.stateContract || policy.component) {
     const handoffReport = buildComponentHandoffReport(root, manifest, captures, stateResourceInventories, resources);
     if(handoffReport.status !== 'complete') {
-      fail({reason:'state_handoff_incomplete',missing_states:handoffReport.counts.missing_states,missing_files:handoffReport.counts.missing_files});
+      fail({reason:'state_handoff_incomplete',missing_cases:handoffReport.counts.missing_cases,missing_files:handoffReport.counts.missing_files});
     }
   }
   if(Array.isArray(policy.required_states) && policy.required_states.length > 0) {

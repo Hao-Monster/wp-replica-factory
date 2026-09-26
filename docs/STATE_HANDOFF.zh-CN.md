@@ -25,15 +25,17 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
 
 ---
 
-## 3. 状态合同（State Contract）规范
+## 3. 完整采集策略与状态合同规范（Policy Specification）
 
-状态合同是一份显式、经过审阅的 JSON 配置，支持以下声明：
+Downloader 通过完整的 Policy JSON 文件驱动。状态合同必须内嵌于策略对象中，包含显式源站与资源白名单：
 
 ```json
 {
-  "schema": 1,
+  "mode": "owned-fixture",
+  "url": "http://127.0.0.1:8765/index.html",
+  "pageOrigins": ["http://127.0.0.1:8765"],
+  "assetOrigins": ["http://127.0.0.1:8765"],
   "component": "region-selector",
-  "page": "/index.html",
   "viewports": [
     { "width": 1440, "height": 1000 },
     { "width": 390, "height": 844 }
@@ -47,6 +49,7 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
   "states": [
     {
       "state_id": "region-closed",
+      "path": "/index.html",
       "actions": [],
       "assertions": [
         { "selector": "#region-trigger-btn", "visible": true },
@@ -55,6 +58,7 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
     },
     {
       "state_id": "region-open",
+      "path": "/index.html",
       "preconditions": [
         { "selector": "#region-portal", "visible": false }
       ],
@@ -64,7 +68,8 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
       "assertions": [
         { "selector": "#region-portal", "visible": true },
         { "selector": "#region-portal .region-title", "visible": true, "text": "Select Region" },
-        { "selector": "#region-portal .flag-img", "visible": true }
+        { "selector": "#region-portal .flag-img", "visible": true },
+        { "selector": "#region-portal #lang-list", "visible": false }
       ],
       "required_resources": [
         { "type": "image", "selector": "#region-portal .flag-img" },
@@ -74,6 +79,7 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
     },
     {
       "state_id": "language-expanded",
+      "path": "/index.html",
       "preconditions": [
         { "selector": "#region-portal", "visible": false }
       ],
@@ -85,10 +91,19 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
         { "selector": "#region-portal", "visible": true },
         { "selector": "#lang-list", "visible": true },
         { "selector": "#lang-list .lang-item", "visible": true, "min_count": 2 }
+      ],
+      "required_resources": [
+        { "type": "image", "selector": "#region-portal .flag-img" },
+        { "type": "css-background", "selector": "#region-portal .dialog-header" },
+        { "type": "inline-svg", "selector": "#region-portal .close-icon" }
       ]
     },
     {
       "state_id": "region-closed-again",
+      "path": "/index.html",
+      "preconditions": [
+        { "selector": "#region-portal", "visible": false }
+      ],
       "actions": [
         { "type": "click", "selector": "#region-trigger-btn" },
         { "type": "click", "selector": "#region-close-btn" }
@@ -104,11 +119,14 @@ npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
 ```
 
 ### 关键字段说明
-- `preconditions`：执行动作前检查。
+- `preconditions`：执行动作前检查，确保页面处于约定前置状态（如弹窗尚未打开）。
 - `actions`：有序操作序列（支持 `click`、`hover`、`scroll`）。
-- `assertions`：动作后置判定。`visible: true` 要求元素在 DOM 中且实际可见（尺寸大于 0，未被 `display: none`/`visibility: hidden` 隐藏）；`visible: false` 要求元素不存在或被隐藏。
-- `required_states`：必须达成的状态集合。缺失任何一个状态均会判定采集不完整。
-- `restores_state`：转换断言，确认关闭动作确实恢复到初始状态。
+- `assertions`：动作后置判定。`visible: true` 经由 Playwright locator wait 判定元素真实可见（尺寸大于 0，未被 `display: none`/`visibility: hidden` 隐藏）；`min_count` 校验满足真实可见性的元素数量。
+- `required_states`：必须达成的状态定义清单。
+- `restores_state`：转换断言，确认关闭动作执行后确实恢复到初始状态的全部不变式。
+- `required_resources`：指定该状态依赖的关键元素，若未找到对应元素或资源未落盘直接报错。
+
+> **边界声明**：本能力执行的是经人工审阅与授权的【显式状态合同】，不是无边界自动化爬虫，也不会自动穷尽目标站点的所有动态交互。测试套件通过代表受控 fixture 验收成功，绝不等于对任意商业站点的状态已自动全量覆盖。
 
 ---
 
@@ -137,24 +155,31 @@ node tools/downloader/cli.mjs preview .replica/downloads/my-component-run --port
 
 | 文件路径 | 说明 |
 | --- | --- |
-| `reports/component-handoff.json` | 组件与状态交接清单：记录所需状态、完成计数、各状态对应的截图、HTML 及使用的原资源。 |
+| `reports/component-handoff.json` | 组件与状态交接清单：记录必须状态定义数、必须用例数（状态×视口）、实际有效用例数、各状态对应的截图、HTML、内联 SVG 独立文件及使用的原资源。 |
 | `pages/<capture_id>/screenshot.png` | 对应状态和视口下的全页高保真截图。 |
-| `pages/<capture_id>/rendered.html` | 动作执行稳定后的完整 DOM 结构（保留 Portal 挂载节点与 inline SVG）。 |
+| `pages/<capture_id>/rendered.html` | 动作执行稳定后的完整 DOM 结构（保留 Portal 挂载节点与 inline SVG 标记）。 |
+| `pages/<capture_id>/svg-<idx>-<hash>.svg` | 状态渲染中提取并独立落盘的内联 SVG 原文件。 |
 | `site/objects/<hash>.<ext>` | 本地化的原件资源文件（图片、CSS、字体等），已核对 SHA256。 |
 | `raw/<hash>.bin` | 浏览器收到的未经改写的原始网络响应体。 |
 
-### `component-handoff.json` 示例片段
+### `component-handoff.json` 结构示例
 ```json
 {
   "schema": 1,
   "component": "region-selector",
+  "contract": {
+    "required_states": ["region-closed", "region-open", "language-expanded", "region-closed-again"],
+    "required_state_definitions": 4,
+    "required_cases": 8,
+    "viewports": [{"width": 1440, "height": 1000}, {"width": 390, "height": 844}]
+  },
   "counts": {
-    "expected_states": 4,
-    "captured_states": 8,
-    "verified_states": 8,
-    "missing_states": 0,
+    "required_state_definitions": 4,
+    "required_cases": 8,
+    "actual_valid_cases": 8,
+    "missing_cases": 0,
     "cataloged_resources": 3,
-    "verified_files": 2,
+    "verified_files": 3,
     "missing_files": 0
   },
   "status": "complete",
@@ -164,20 +189,32 @@ node tools/downloader/cli.mjs preview .replica/downloads/my-component-run --port
       "kind": "image",
       "origin": "network",
       "source_url": "http://127.0.0.1:8765/assets/region-flag.svg",
-      "source_sha256": "8f...",
-      "local_path": "site/objects/8f....svg",
-      "local_sha256": "8f...",
+      "source_sha256": "8f5a...",
+      "local_path": "site/objects/8f5a....svg",
+      "local_sha256": "8f5a...",
       "verified_on_disk": true,
-      "states_used": ["region-open", "language-expanded"]
+      "states_used": ["http://127.0.0.1:8765/index.html::1440x1000::region-open"]
     },
     {
       "id": "res-2",
+      "kind": "css-background",
+      "origin": "network",
+      "source_url": "http://127.0.0.1:8765/assets/dialog-bg.svg",
+      "source_sha256": "b12c...",
+      "local_path": "site/objects/b12c....svg",
+      "local_sha256": "b12c...",
+      "verified_on_disk": true,
+      "states_used": ["http://127.0.0.1:8765/index.html::1440x1000::region-open"]
+    },
+    {
+      "id": "res-3",
       "kind": "inline-svg",
       "origin": "inline",
-      "source_sha256": "c4...",
-      "local_sha256": "c4...",
+      "source_sha256": "c47d...",
+      "local_path": "pages/9a41.../svg-0-c47d....svg",
+      "local_sha256": "c47d...",
       "verified_on_disk": true,
-      "states_used": ["region-open", "language-expanded"]
+      "states_used": ["http://127.0.0.1:8765/index.html::1440x1000::region-open"]
     }
   ]
 }
