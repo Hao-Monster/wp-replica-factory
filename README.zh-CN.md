@@ -10,6 +10,8 @@
 
 ## 已实现
 
+- 独立视觉评估器：获准 baseline 与 candidate 的 SHA 绑定、RGBA 逐像素差异、区域/尺寸/状态/重复/新鲜度/字体/缺图检查、差异图和反伪造报告验证。普通 repair agent 不能修改 baseline 或 evaluator threshold。
+
 - Challenge-aware Downloader：对登录、密码、CAPTCHA、MFA、bot/WAF challenge、403 与 429 做统一安全分类；页面 `pageerror` / `console.error` 单独脱敏记录，不等同于 Downloader 内部异常。确认 challenge 后状态为 `blocked`、reason 为 `challenge_detected`，停止自动 discovery，不执行绕过。
 
 - 可选下载器 v0.1：单入口多页真实采集、资源落盘/本地化、独立预览与验证。支持 owned loopback fixture 与最小 authorized-public HTTPS 模式；公网模式要求用户明确授权、单一 page origin、显式 asset origins，并拒绝登录/challenge 与业务写请求。owned fixture 已正式存在于 `main`，Downloader 测试直接使用当前 checkout 的 `scripts/fixture_site.py`、RESOURCE_MANIFEST 与 STATE_MATRIX，不再依赖外部 PR checkout。安装、实际入口、固定验收和限制见 `docs/DOWNLOADER.zh-CN.md`。这不表示下列完整平台建设已完成。

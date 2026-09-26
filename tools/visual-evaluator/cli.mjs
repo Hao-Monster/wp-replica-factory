@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+import {evaluate,verifyReport} from './evaluate.mjs';
+try{const a=process.argv.slice(2),v=k=>a[a.indexOf(k)+1];if(a[0]==='evaluate'){const r=evaluate({baseline:v('--baseline'),candidate:v('--candidate'),policy:v('--policy'),out:v('--out')});console.log(JSON.stringify(r));process.exitCode=r.overall_status==='pass'?0:2;}else if(a[0]==='verify-report'){console.log(JSON.stringify(verifyReport(a[1])));}else throw Error('usage: evaluate --baseline DIR --candidate DIR --policy FILE --out DIR');}catch(e){console.error(JSON.stringify({status:'invalid',error:e.message}));process.exitCode=3;}
