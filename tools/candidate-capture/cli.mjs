@@ -2,10 +2,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {evaluate,verifyReport} from '../visual-evaluator/evaluate.mjs';
-import {sha} from '../visual-evaluator/image-diff.mjs';
+import {sha,writePng} from '../visual-evaluator/image-diff.mjs';
 
 const require=createRequire(new URL('../downloader/package.json',import.meta.url));
 const {chromium}=require('playwright');
@@ -43,6 +44,54 @@ function validatePolicy(policy){
 
 const safeName=v=>v.replace(/[^a-z0-9_.-]+/g,'-');
 
+const PNG_SIGNATURE=Buffer.from([137,80,78,71,13,10,26,10]);
+function normalizeScreenshotRgba(file){
+  const png=fs.readFileSync(file);
+  if(!png.subarray(0,8).equals(PNG_SIGNATURE))throw Error('candidate screenshot is not PNG');
+  let pos=8,width=0,height=0,depth=0,colour=-1,interlace=-1;
+  const idat=[];
+  while(pos+12<=png.length){
+    const size=png.readUInt32BE(pos);
+    if(pos+12+size>png.length)throw Error('candidate screenshot PNG is truncated');
+    const type=png.toString('ascii',pos+4,pos+8);
+    const data=png.subarray(pos+8,pos+8+size);
+    pos+=size+12;
+    if(type==='IHDR'){
+      width=data.readUInt32BE(0); height=data.readUInt32BE(4);
+      depth=data[8]; colour=data[9]; interlace=data[12];
+    }else if(type==='IDAT')idat.push(data);
+    else if(type==='IEND')break;
+  }
+  if(depth!==8||interlace!==0||!width||!height||![2,6].includes(colour))throw Error('candidate screenshot must be non-interlaced 8-bit RGB/RGBA PNG');
+  if(colour===6)return;
+  const bpp=3,stride=width*bpp,raw=zlib.inflateSync(Buffer.concat(idat));
+  if(raw.length!==height*(stride+1))throw Error('candidate screenshot PNG row size mismatch');
+  const rgb=Buffer.alloc(height*stride);
+  let q=0;
+  for(let y=0;y<height;y++){
+    const filter=raw[q++],row=raw.subarray(q,q+stride); q+=stride;
+    for(let x=0;x<stride;x++){
+      const left=x>=bpp?rgb[y*stride+x-bpp]:0;
+      const up=y?rgb[(y-1)*stride+x]:0;
+      const upLeft=y&&x>=bpp?rgb[(y-1)*stride+x-bpp]:0;
+      let value=row[x];
+      if(filter===1)value+=left;
+      else if(filter===2)value+=up;
+      else if(filter===3)value+=Math.floor((left+up)/2);
+      else if(filter===4){
+        const p=left+up-upLeft,pa=Math.abs(p-left),pb=Math.abs(p-up),pc=Math.abs(p-upLeft);
+        value+=pa<=pb&&pa<=pc?left:pb<=pc?up:upLeft;
+      }else if(filter!==0)throw Error('unsupported candidate screenshot PNG filter');
+      rgb[y*stride+x]=value&255;
+    }
+  }
+  const rgba=Buffer.alloc(width*height*4);
+  for(let src=0,dst=0;src<rgb.length;src+=3,dst+=4){
+    rgba[dst]=rgb[src]; rgba[dst+1]=rgb[src+1]; rgba[dst+2]=rgb[src+2]; rgba[dst+3]=255;
+  }
+  writePng(file,width,height,rgba);
+}
+
 async function prepareState(page,state,hooks){
   if(state==='default')return;
   const chosen=state==='menu-open'?hooks.menuToggle:hooks.addFixture;
@@ -78,6 +127,7 @@ export async function captureCandidate({policyFile,out}){
       const file=`${safeName(item.page)}.${safeName(viewport.id)}.${safeName(state)}.png`;
       const full=path.join(shots,file);
       await page.screenshot({path:full,fullPage:false,animations:'disabled'});
+      normalizeScreenshotRgba(full);
       rows.push({page:item.page,route:item.route,viewport:viewport.id,state,path:`screenshots/${file}`,sha256:sha(full),width:viewport.width,height:viewport.height,timestamp:new Date().toISOString()});
       for(const failure of failures)failedImages.push({page:item.page,viewport:viewport.id,state,...failure});
       await context.close();
