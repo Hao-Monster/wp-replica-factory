@@ -6,7 +6,7 @@ description: 采集获准的参考网页、真实图片、字体、CSS 与页面
 # Capture Reference
 下载子阶段已有可执行入口，先读 `docs/DOWNLOADER.zh-CN.md`：
 `node tools/downloader/cli.mjs download|verify|preview|compare`。
-仅 owned-fixture 模式可运行；PR #5 固定 SHA 是只读测试依赖，公共站模式保持 blocked。
+仅 owned-fixture 模式可运行；owned fixture 已作为框架正式组成部分存在于当前 checkout，公共站模式保持 blocked。
 必须检查真实文件和独立预览报告；下载 complete 不代表完整状态矩阵、视觉基准或 WooCommerce 验收通过。
 HAR 敏感，不提交或默认上传；原始响应与本地化 site 分离。
 

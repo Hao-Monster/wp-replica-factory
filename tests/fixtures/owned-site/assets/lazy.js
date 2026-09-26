@@ -1,0 +1,1 @@
+const state=document.querySelector('#lazy-panel');const status=document.querySelector('#lazy-status');const observer=new IntersectionObserver(entries=>{if(entries.some(e=>e.isIntersecting)){state.dataset.loaded='true';status.textContent='Background and SVG loaded';observer.disconnect()}},{rootMargin:'0px'});observer.observe(state);

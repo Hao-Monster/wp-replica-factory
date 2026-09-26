@@ -7,7 +7,7 @@
 
 ## 1. 安装与固定测试依赖
 
-Node 22+，本地和 CI 固定验证 Node 24.12.0；Python 3.13 用于 PR #5 fixture。
+Node 22+，本地和 CI 固定验证 Node 24.12.0；Python 3.13 用于仓库内正式 owned fixture。
 项目依赖及传递依赖由 `tools/downloader/package-lock.json` 固定。
 浏览器仅使用 Playwright 1.55.0 / Chromium 140.0.7339.16，build 1187。
 不选择系统 Chrome、不连接日常浏览器、不安装 OpenDesign 桌面平台。
@@ -18,19 +18,12 @@ Node 22+，本地和 CI 固定验证 Node 24.12.0；Python 3.13 用于 PR #5 fix
 npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.replica/browsers'
 node tools/downloader/node_modules/playwright/cli.js install chromium
-git fetch origin
-git worktree add --detach .replica/dependencies/fixture 66e30c9fa6fa5977f088c380e22838648399e2e1
 node tools/downloader/cli.mjs --help
 ```
 
-已有该依赖工作树时不重复创建。PR #5 固定 head
-`66e30c9fa6fa5977f088c380e22838648399e2e1` 是只读测试依赖，下载分支基于 main，
-不合并 PR #5、不复制其整套文件。运行态产品 JSON 位于独立临时目录。
-启动器检查固定 head、已修改文件的实际 Git blob 字节与 fixture 自带清单。
-PR #5 的通用 `text` 属性会将 TTF 误报为脏文件；仅当实际字节与固定 blob
-完全一致时接受，不改其属性、不归一化二进制文件。
+owned fixture 已正式存在于当前仓库：生命周期入口为 `scripts/fixture_site.py`，版本化资源与状态合同位于 `tests/fixtures/owned-site/`。Downloader acceptance 直接导入当前 checkout 的正式 fixture，实现与 Framework tests 共用同一 RESOURCE_MANIFEST、STATE_MATRIX、required-state contract 和 runtime data；不再创建独立 fixture checkout，也不复制第二份测试站。运行态产品 JSON 仍位于独立临时 sandbox。
 
-Linux CI 使用同一 lockfile、浏览器 build 和 fixture SHA；浏览器系统依赖只在
+Linux CI 使用同一 lockfile、浏览器 build 和当前 checkout 的版本化 fixture；浏览器系统依赖只在
 临时 CI runner 安装。Windows 不修改系统权限或全局 Python/Node 包。
 
 ## 2. 完整自有站验收：一次命令获得镜像
@@ -41,7 +34,7 @@ node tests/downloader/acceptance.mjs
 Get-Content -Encoding UTF8 .replica/downloader-acceptance.json
 ```
 
-验收程序启动原 PR #5 fixture，从单个 `/grid.html` 入口独立采集两次，
+验收程序启动当前 checkout 的正式 owned fixture，从单个 `/grid.html` 入口独立采集两次，
 再停止源服务、确认它不可连接，启动不同 origin 的隔离预览并运行实际 DOM
 断言。预期页面与 selector 仅在验收代码，不作为下载种子。
 主下载目录是报告的 `primary_download`；第二份为 `repeat_download`。
@@ -145,7 +138,7 @@ preview 只通过已验证的 `site/` 映射服务文件，绑定 127.0.0.1；�
 A–H 均调用正式 download/verify/preview 逻辑：单入口三页、真实文件和校验、
 断源双视口交互、query/嵌套 CSS/空格中文 URL、404/损坏/越界/预算反例、
 两次核心摘要比较、缺文件/哈希/空对象/内部 failed 但退出 0 的拒绝，以及真实 HAR。
-小型 edge fixture 只提供边界 HTTP 响应，未替换或重写 PR #5 测试站。
+小型 edge fixture 只提供边界 HTTP 响应，未替换或重写正式 owned fixture。
 
 上游固定 `nexu-io/open-design@1b47e60bd46641469fcd8b69c496c4e3a548bc28`。
 执行复用来自 route-crawl 的 collectPage、recon-site 的 collectSignals、
@@ -160,7 +153,7 @@ asset-harvest 的 classify、mirror-site 的受限滚动序列及 network-captur
 
 ## 7. CI、升级与回滚
 
-新增 downloader job 只读权限，Actions、npm lockfile、Node 与 fixture SHA 固定。
+新增 downloader job 只读权限，Actions、npm lockfile、Node 与当前 checkout 的 fixture contract 固定。
 执行同一下载—断源预览—验证链；失败不因证据上传成功而被覆盖。
 证据收集只复制自有 fixture 的脱敏结构化报告与必要截图，保留 7 天；
 raw、site、HAR、字体文件及第三方素材不上传，全部运行产物默认被 Git 忽略。

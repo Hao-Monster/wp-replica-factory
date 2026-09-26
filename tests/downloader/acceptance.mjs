@@ -11,7 +11,7 @@ import { edgeFixture } from './edge-fixture.mjs';
 
 const bucket=path.join(ROOT,'.replica/downloads/acceptance-'+new Date().toISOString().replaceAll(':','-')+'-'+process.pid);
 fs.mkdirSync(bucket,{recursive:true});
-const report={schema:1,status:'running',bucket,started_at:new Date().toISOString(),fixture_sha:'66e30c9fa6fa5977f088c380e22838648399e2e1',checks:[],runs:[]};
+const report={schema:1,status:'running',bucket,started_at:new Date().toISOString(),fixture:{source:'current-checkout'},checks:[],runs:[]};
 const reportPath=path.join(ROOT,'.replica/downloader-acceptance.json');
 const persist=()=>{fs.writeFileSync(reportPath,json(report));fs.writeFileSync(path.join(bucket,'acceptance.json'),json(report));};persist();
 const record=(id,evidence)=>{report.checks.push({id,status:'passed',...evidence});console.log('PASS '+id);persist();};
@@ -37,7 +37,7 @@ function negative(run,allowed=['partial','failed','blocked']) {
 }
 let source,edge,sourceStopped=false;
 try {
-  source=await startFixture();report.source_origin=source.origin;persist();
+  source=await startFixture();report.source_origin=source.origin;report.fixture={source:'current-checkout',...source.fixture};persist();
   for(const n of [1,2]) {
     const dir=output('owned-'+n);
     // Exactly ONE entry. The expected three routes are never downloader seeds.
