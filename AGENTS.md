@@ -26,6 +26,7 @@
 - 用稳定业务标识和幂等迁移同步获准的内容与设置；变更数据库必须另行审批。
 
 ## 验收与状态
+- `tools/visual-evaluator/` 与 approved baseline 属于只读可信组件。普通 site/rebuild/repair Agent 不得修改 evaluator、baseline manifest 或 visual policy threshold；baseline 更新只能通过独立维护者审批流程。
 - 每轮输出可复查的参考图、实际图、diff 和机器报告。
 - Agent 的文字结论、进程退出码 0 和自写 pass.json 均不是验收依据。
 - 缺图、字体未加载、跳过用例、范围缩水、缺失报告、旧构建报告都不能通过。

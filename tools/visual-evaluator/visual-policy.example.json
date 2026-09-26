@@ -1,0 +1,7 @@
+{
+  "pixel": {"maxDifferentRatio": 0, "maxMeanAbsoluteError": 0},
+  "maxCandidateAgeMinutes": 30,
+  "requiredStates": [{"page":"home","viewport":"desktop","state":"default"}],
+  "regions": [{"name":"main","x":0,"y":0,"width":4,"height":4}],
+  "failOnMissingImages": true
+}

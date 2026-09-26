@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the independent deterministic visual evaluator for trusted baselines and candidate screenshots. Issue #3/G2 remains separate from site rebuild and production release.
+
+## Unreleased
+
 - Add challenge-aware public capture diagnostics with controlled AWS-like fixtures. Challenge pages stop capture with `blocked` / `challenge_detected`; page runtime errors are recorded separately and do not alone fail an otherwise valid capture. No WAF/CAPTCHA bypass is introduced.
 
 ## Unreleased
