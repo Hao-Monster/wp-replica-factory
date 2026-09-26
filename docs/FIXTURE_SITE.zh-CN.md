@@ -61,6 +61,6 @@ py -3 -X utf8 scripts/fixture_site.py test
 
 浏览器验收的 `status` 与退出码绑定：任一运行语义摘要不一致时输出 `status=fail`、差异字段并返回非零；包装脚本还会校验两个完整运行对象、哈希、运行恢复标记和 `comparison.equal == true`，空报告或内部失败不能被接受为通过。正常和负向懒加载页面共用同一观察函数，并记录实际 `innerWidth`/`innerHeight`。
 
-`RESOURCE_MANIFEST.json` 和 `STATE_MATRIX.json` 是版本化期望值。seed、health 和 test 都核对资源路径、SHA-256、商品图片关联、页面状态 ID 和运行副本清单；不会自动更新期望值。health 分开报告 fixture 完整性、运行数据 SHA-256 和 HTTP 检查。
+`RESOURCE_MANIFEST.json` 和 `STATE_MATRIX.json` 是版本化期望值。seed、health 和 test 都核对资源路径、SHA-256、商品图片关联、页面状态 ID 和运行副本清单；不会自动更新期望值。required page/state 合同只在 `scripts/fixture_site.py` 的 `REQUIRED_STATES` 中定义一次；`verify_fixture()` 独立校验 required page 唯一、page 内 state ID 唯一及 required state 完整性，未知额外 state 可保留。返回摘要中的 `page_count` 是页面数，`state_count` 是全部页面 state 总数；正式 browser test 在启动浏览器前会先加载并验证同一 state contract。health 分开报告 fixture 完整性、运行数据 SHA-256 和 HTTP 检查。
 
 浏览器 test 的 `run_1` 与 `run_2` 使用不同运行目录和新浏览器上下文，分别输出实际观察和语义 SHA-256，并报告比较字段。实际观察包括 DOM 商品 ID/顺序、元素边界列数、每张图片解码、字体加载状态和使用证据、懒加载背景的实际渲染、全部筛选状态、菜单状态与被阻断的外部请求。状态摘要一致不代表逐像素一致。
