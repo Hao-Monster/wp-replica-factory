@@ -13,6 +13,7 @@ jobs:
       - name: Install WP CLI and WooCommerce in the isolated stack
         run: |
           docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress bash -lc 'curl -sSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp && chmod +x /usr/local/bin/wp'
+          for i in $(seq 1 30); do docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp db check --allow-root >/dev/null 2>&1 && break; test "$i" -lt 30 || exit 1; sleep 2; done
           docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp core install --url=http://127.0.0.1:8080 --title=Replica --admin_user=replica --admin_password=replica --admin_email=replica@example.invalid --skip-email --allow-root
           docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp plugin install woocommerce --activate --allow-root
           docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp option update replica_staging_marker replica-fixture --allow-root
