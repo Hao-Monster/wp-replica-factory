@@ -181,6 +181,7 @@ export async function download(input,output,options={}) {
   manifest.pageRuntimeErrors=pageRuntimeErrors.map(e=>({...e,detail:String(e.detail).replace(/SECRET_CANARY_[A-Z_]+/g,'<redacted>')}));
   manifest.challenge=challengeResult;
   put(root,'reports/page-runtime-errors.json',json({schema:1,errors:manifest.pageRuntimeErrors}));
+  if(challengeResult.detected) put(root,'reports/challenge.json',json({schema:1,detected:true,kind:challengeResult.kind,vendor:challengeResult.vendor,confidence:challengeResult.confidence,signals:challengeResult.signals,url:sanitizeUrl(policy.url,policy.sensitiveQueryKeys),timestamp:new Date().toISOString(),recommended_action:'interactive_browser_recon'}));
   manifest.captures=captures;
   if(policy.required_states?.length || policy.stateContract || policy.component) {
     const handoffReport = buildComponentHandoffReport(root, manifest, captures, stateResourceInventories, resources);
