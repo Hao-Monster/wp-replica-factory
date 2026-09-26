@@ -38,8 +38,8 @@ const server=https.createServer({key:fs.readFileSync(key),cert:fs.readFileSync(c
   if(u.pathname==='/big'){res.writeHead(200,{'content-type':'text/html'}).end('<!doctype html><title>Big</title><h1>Big</h1><script src="/big.js"></script>');return;}
   if(host==='cdn.test'){res.writeHead(200,{'content-type':'application/javascript'}).end('window.cdnLoaded=true');return;}
   res.writeHead(200,{'content-type':'text/html','set-cookie':'sid=SECRET_CANARY_COOKIE; Secure; SameSite=Lax'}).end(
-    '<!doctype html><title>Public MVP</title><link rel="stylesheet" href="/style.css"><h1>Public MVP</h1><a href="/second?b=2&a=1#frag">Second</a>'+
-    '<script>fetch("/data.json?canary=SECRET_CANARY_QUERY",{headers:{Authorization:"SECRET_CANARY_AUTH"}}).catch(()=>{})</script>'
+    '<!doctype html><title>Public MVP</title><link rel="stylesheet" href="/style.css"><h1>Public MVP</h1><a href="/second?b=2&a=1#frag">Second</a><button id="load-json">Load JSON</button>'+
+    '<script>document.querySelector("#load-json").addEventListener("click",()=>fetch("/data.json?canary=SECRET_CANARY_QUERY",{headers:{Authorization:"SECRET_CANARY_AUTH"}}).catch(()=>{}))</script>'
   );
 });
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>{port=server.address().port;resolve();});});
@@ -54,7 +54,7 @@ const dial=()=>net.connect({host:'127.0.0.1',port});
 const policy=(url=origin+'/',extra={})=>({
   mode:'authorized-public',url,pageOrigins:[origin],assetOrigins:[origin],publicGetFixtures:[origin+'/data.json?canary=SECRET_CANARY_QUERY'],
   maxPages:25,maxDepth:2,maxResources:2000,maxBytes:26214400,maxTotalBytes:157286400,budgetMs:180000,timeoutMs:15000,maxRedirects:10,
-  viewports:[{width:1440,height:1000},{width:390,height:844}],states:[],har:true,sensitiveQueryKeys:['canary','token','session'],...extra
+  viewports:[{width:1440,height:1000},{width:390,height:844}],states:[{name:'load-json',path:'/',actions:[{type:'click',selector:'#load-json'}]}],har:true,sensitiveQueryKeys:['canary','token','session'],...extra
 });
 const run=async(name,p=policy(),network={resolver:publicResolver,dial})=>{
   const dir=path.join(bucket,name);
