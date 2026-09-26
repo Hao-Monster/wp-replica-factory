@@ -182,7 +182,7 @@ export async function download(input,output,options={}) {
   manifest.challenge=challengeResult;
   put(root,'reports/page-runtime-errors.json',json({schema:1,errors:manifest.pageRuntimeErrors}));
   manifest.captures=captures;
-  if(policy.required_states?.length || stateResourceInventories.some(inv=>inv.resources.length>0)) {
+  if(policy.required_states?.length || policy.stateContract || policy.component) {
     const handoffReport = buildComponentHandoffReport(root, manifest, captures, stateResourceInventories, resources);
     if(handoffReport.status !== 'complete') {
       fail({reason:'state_handoff_incomplete',missing_states:handoffReport.counts.missing_states,missing_files:handoffReport.counts.missing_files});

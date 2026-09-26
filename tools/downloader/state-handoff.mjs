@@ -184,7 +184,15 @@ export async function inspectStateComponentResources(page, state, knownResources
   // Map images
   for (const img of rawDomResources.images) {
     if (!img.currentSrc) continue;
-    const match = knownResources.find(r => r.url === img.currentSrc || r.response_url === img.currentSrc);
+    let match = knownResources.find(r => (r.url === img.currentSrc || r.response_url === img.currentSrc) && r.status === 'saved');
+    if (!match) {
+      const redirectMatch = knownResources.find(r => r.url === img.currentSrc || r.response_url === img.currentSrc);
+      if (redirectMatch && redirectMatch.status === 'redirect' && redirectMatch.response_url) {
+        match = knownResources.find(r => (r.url === redirectMatch.response_url || r.response_url === redirectMatch.response_url) && r.status === 'saved');
+      } else {
+        match = redirectMatch;
+      }
+    }
     let verifiedOnDisk = false;
     let localSha = null;
     let rawSha = null;
@@ -196,7 +204,7 @@ export async function inspectStateComponentResources(page, state, knownResources
       rawPath = match.raw_path;
       localSha = match.local_sha256;
       rawSha = match.raw_sha256;
-      if (fs.existsSync(safeFile(root, localPath))) {
+      if (localPath && fs.existsSync(safeFile(root, localPath))) {
         const diskContent = fs.readFileSync(safeFile(root, localPath));
         verifiedOnDisk = sha(diskContent) === match.local_sha256;
       }
@@ -233,7 +241,15 @@ export async function inspectStateComponentResources(page, state, knownResources
 
   // Map CSS backgrounds
   for (const bg of rawDomResources.backgrounds) {
-    const match = knownResources.find(r => r.url === bg.url || r.response_url === bg.url);
+    let match = knownResources.find(r => (r.url === bg.url || r.response_url === bg.url) && r.status === 'saved');
+    if (!match) {
+      const redirectMatch = knownResources.find(r => r.url === bg.url || r.response_url === bg.url);
+      if (redirectMatch && redirectMatch.status === 'redirect' && redirectMatch.response_url) {
+        match = knownResources.find(r => (r.url === redirectMatch.response_url || r.response_url === redirectMatch.response_url) && r.status === 'saved');
+      } else {
+        match = redirectMatch;
+      }
+    }
     let verifiedOnDisk = false;
     let localSha = null;
     let rawSha = null;
@@ -243,7 +259,7 @@ export async function inspectStateComponentResources(page, state, knownResources
       localPath = match.local_path;
       localSha = match.local_sha256;
       rawSha = match.raw_sha256;
-      if (fs.existsSync(safeFile(root, localPath))) {
+      if (localPath && fs.existsSync(safeFile(root, localPath))) {
         const diskContent = fs.readFileSync(safeFile(root, localPath));
         verifiedOnDisk = sha(diskContent) === match.local_sha256;
       }
