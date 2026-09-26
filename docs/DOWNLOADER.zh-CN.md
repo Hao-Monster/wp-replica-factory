@@ -2,8 +2,7 @@
 
 这是 Issue #2 的下载子阶段，不是整个 G1、完整状态采集器或商城接入。
 入口均已实现：`node tools/downloader/cli.mjs download|verify|preview|compare`。
-可执行模式仅为自有精确环回 fixture。`authorized-public` 明确返回 blocked/3；
-不能用 DNS 预检查或浏览器路由拦截冒充公共网页的强网络隔离。
+`owned-fixture` 与最小 `authorized-public` 均可执行。public MVP 只支持用户明确授权、无需登录的 HTTPS：单一 page origin、显式 asset origins、GET/HEAD、<a href> 发现、scroll/显式 states actions 和精确批准的只读 GET JSON。登录、CAPTCHA、POST 业务流、自动 CDN 批准、WordPress/WooCommerce 与商业站 smoke 不在本阶段。
 
 ## 1. 安装与固定测试依赖
 
@@ -102,7 +101,8 @@ localhost 的任意端口。页面和资源 allowlist 分离；v0.1 页面限定
 | complete | 0 | 本次批准策略内已发现页面处理完毕，文件与映射完整；交互能力仍需 browser verify 的实测范围证明。 |
 | partial | 2 | 有页面成功，但仍有待处理页面、依赖缺口、资源失败或响应变体冲突。 |
 | failed | 1 | 无页面成功、输入/输出目录非法、验证失败或运行错误。 |
-| blocked | 3 | 公共网页模式缺少强网络隔离，或采集中发现认证/挑战阻塞。 |
+| blocked | 3 | 安全策略、私网/DNS 检查、写业务请求或认证/challenge 阻止继续。 |
+| exhausted | 4 | page/byte/time 等预算耗尽。 |
 
 `verify` 对 partial/blocked/failed 制品返回非零；`preview` 默认拒绝这些制品。
 达到页数、深度或总预算不等于“全站成功”。`compare` 同时检查两次产物本身、
@@ -130,8 +130,7 @@ HTML、srcset、CSS url()/@import 使用解析器改写；未获取的响应式�
 preview 只通过已验证的 `site/` 映射服务文件，绑定 127.0.0.1；拒绝路径穿越、
 符号链接/硬链接、错误 Host 与写方法，不暴露 raw/network/仓库根，不代理源站。
 响应带 CSP、禁止表单/iframe/object/worker、禁止外源连接等限制。
-这是自有 fixture 的本地防护，不是针对任意恶意网站的操作系统级沙箱；
-`authorized-public` 仍 blocked，尚不提供 DNS rebinding 防护的公共运行环境。
+`authorized-public` 通过统一 network guard 与本地 outbound CONNECT proxy 在每次浏览器请求/连接前校验 HTTPS、精确 origin、DNS 结果与私网地址，并在新连接前重新解析以阻断基础 DNS rebinding。未知第三方 origin 记录 `needs_approval`；写方法在发送前阻断。该 MVP 不是完整网络安全平台，不支持登录、CAPTCHA 绕过、任意跨域 API、WebSocket 业务或生产操作。
 
 ## 6. 固定验收与复用清单
 
@@ -162,3 +161,18 @@ raw、site、HAR、字体文件及第三方素材不上传，全部运行产物�
 步骤安装；现有项目不会自动升级。回滚只需停止预览，回退本 PR 的提交并移除
 由操作者确认属于本工具的运行目录；工具不递归删除用户传入的目录。
 CI/采集边界的变更需要维护者审阅，不自动合并或关闭 Issue #2。
+## 8. authorized-public MVP
+
+示例策略：`examples/downloader.public.policy.example.json`。这是技术授权模式，不等于版权、商标或数据使用许可；操作者仍须拥有目标站采集/复刻权限。
+
+```bash
+node tools/downloader/cli.mjs download --policy my-public-policy.json --out .replica/downloads/public-test
+node tools/downloader/cli.mjs verify .replica/downloads/public-test
+node tools/downloader/cli.mjs preview .replica/downloads/public-test --port 8124
+node tools/downloader/cli.mjs compare .replica/downloads/public-test .replica/downloads/public-test-2
+```
+
+公网入口只接受 HTTPS，pageOrigins 必须恰好包含 seed 的单一 origin，assetOrigins 必须显式列出且不支持 wildcard。DNS 解析后的 loopback、RFC1918、link-local、CGNAT、0/8、IPv6 ::/::1、ULA、link-local 与 IPv4-mapped 对应私网地址被拒绝。每个 CONNECT 前重新解析；redirect 和新资源继续通过同一 guard。未知 CDN 不自动加入 allowlist，记录 `needs_approval` 并使运行至少为 partial。
+
+raw HAR 若启用只能位于 `.replica/` 且禁止进入 CI artifact。public run 同时生成 `reports/network-sanitized.json`，移除 Cookie/Set-Cookie/Authorization/Proxy-Authorization，并按 `sensitiveQueryKeys` 脱敏查询值。preview 仍只绑定 127.0.0.1、只服务 site/，绝不回源。
+
