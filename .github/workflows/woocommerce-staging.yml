@@ -81,6 +81,8 @@ jobs:
           if [ -z "$CHECKOUT_ID" ]; then
             CHECKOUT_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Checkout --post_name=checkout --post_content='[woocommerce_checkout]' --porcelain)"
           fi
+          wpcli post update "$CART_ID" --post_content='[woocommerce_cart]'
+          wpcli post update "$CHECKOUT_ID" --post_content='[woocommerce_checkout]'
           wpcli option update woocommerce_shop_page_id "$SHOP_ID"
           wpcli option update woocommerce_cart_page_id "$CART_ID"
           wpcli option update woocommerce_checkout_page_id "$CHECKOUT_ID"
@@ -257,6 +259,7 @@ jobs:
             .replica/ci-evidence
             .replica/baseline/manifest.json
             .replica/baseline/screenshots
+            .replica/baseline/diagnostics
             .replica/candidate/manifest.json
             .replica/candidate/screenshots
             .replica/candidate/diagnostics

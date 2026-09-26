@@ -215,5 +215,13 @@ class SideEffectGateTests(unittest.TestCase):
         self.assertIn("_replica_fixture_marker",code)
         self.assertNotIn("TRUNCATE",code.upper())
 
+class ControlledWorkflowContractTests(unittest.TestCase):
+    def test_owned_cart_and_checkout_pages_are_deterministic_shortcodes(self):
+        workflow=(ROOT/".github/workflows/woocommerce-staging.yml").read_text(encoding="utf-8")
+        self.assertIn("wpcli post update \"$CART_ID\" --post_content='[woocommerce_cart]'",workflow)
+        self.assertIn("wpcli post update \"$CHECKOUT_ID\" --post_content='[woocommerce_checkout]'",workflow)
+        self.assertIn('wpcli option update woocommerce_cart_page_id "$CART_ID"',workflow)
+        self.assertIn('wpcli option update woocommerce_checkout_page_id "$CHECKOUT_ID"',workflow)
+
 if __name__=="__main__":
     unittest.main()
