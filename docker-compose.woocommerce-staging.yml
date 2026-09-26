@@ -1,0 +1,34 @@
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: fixture-only
+      MARIADB_ROOT_PASSWORD: fixture-root-only
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes:
+      - db_data:/var/lib/mysql
+  wordpress:
+    image: wordpress:6.8.2-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: fixture-only
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_ENVIRONMENT_TYPE', 'staging');
+        define('WP_DEBUG', true);
+    volumes:
+      - ./.replica/ci-wp:/var/www/html
+volumes:
+  db_data:
