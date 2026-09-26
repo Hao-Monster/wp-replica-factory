@@ -147,6 +147,21 @@ jobs:
           PY
           python3 adapters/wordpress-staging/build.py --reference-status owned --out .replica/artifacts/v1
           python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json deploy --artifact .replica/artifacts/v1/theme.zip --manifest .replica/artifacts/v1/manifest.json | tee .replica/ci-evidence/deploy-v1.json
+          python3 - <<'PY' | tee .replica/ci-evidence/sentinel-before-cleanup.json
+          import importlib.util, json, pathlib, sys
+          path=pathlib.Path("adapters/wordpress-staging/adapter.py")
+          spec=importlib.util.spec_from_file_location("staging_sentinel",path)
+          module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; spec.loader.exec_module(module)
+          adapter=module.StagingAdapter(json.load(open(".replica/staging.json")))
+          code="""
+          $product_id=wc_get_product_id_by_sku('replica-sentinel-preserve');
+          if(!$product_id){$p=new WC_Product_Simple();$p->set_name('Sentinel Preserve');$p->set_sku('replica-sentinel-preserve');$p->set_regular_price('99');$p->set_status('publish');$product_id=$p->save();}
+          $order=wc_create_order(['status'=>'pending','created_via'=>'sentinel-preserve']);
+          $order->add_product(wc_get_product($product_id),1);$order->calculate_totals();$order->save();
+          echo json_encode(['sentinel_product_id'=>$product_id,'sentinel_order_id'=>$order->get_id()]);
+          """
+          print(adapter.run_wp_cli(["eval",code]))
+          PY
           python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json seed --fixture | tee .replica/ci-evidence/seed.json
           python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json order-test --fixture | tee .replica/ci-evidence/order.json
           python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json health | tee .replica/ci-evidence/health.json
@@ -171,37 +186,28 @@ jobs:
       - name: Capture owned candidate and hand off to trusted evaluator
         run: |
           set -euo pipefail
-          cat >.replica/capture-policy.json <<'JSON'
-          {
-            "authorization":"owned-staging",
-            "previewUrl":"http://127.0.0.1:8080",
-            "routes":[
-              {"page":"home","route":"/","states":["default","menu-open"]},
-              {"page":"category","route":"/product-category/replica-fixture/","states":["default"]},
-              {"page":"product","route":"/product/replica-fixture-001/","states":["default"]},
-              {"page":"cart","route":"/cart/","states":["default","cart-nonempty"]},
-              {"page":"checkout","route":"/checkout/","states":["default"]}
-            ],
-            "viewports":[
-              {"id":"desktop","width":1440,"height":1000},
-              {"id":"mobile","width":390,"height":844}
-            ],
-            "ownedSelectors":{
-              "menuToggle":"[data-replica-menu-toggle]",
-              "addFixture":"[data-replica-add-fixture]"
-            }
-          }
-          JSON
+          cp tests/fixtures/woocommerce-staging/capture-policy.json .replica/capture-policy.json
+          node tools/candidate-capture/cli.mjs capture --policy .replica/capture-policy.json --out .replica/baseline | tee .replica/ci-evidence/baseline-capture.json
           node tools/candidate-capture/cli.mjs capture --policy .replica/capture-policy.json --out .replica/candidate | tee .replica/ci-evidence/candidate.json
-          cp -a .replica/candidate .replica/baseline
           python3 - <<'PY'
-          import json
+          import json, pathlib
+          policy=json.load(open(".replica/capture-policy.json"))
+          expected={(route["page"],viewport["id"],state if isinstance(state,str) else state["id"])
+                    for route in policy["routes"] for viewport in policy["viewports"] for state in route["states"]}
+          assert len(expected)==14, expected
+          for directory in ("baseline","candidate"):
+              manifest=json.load(open(f".replica/{directory}/manifest.json"))
+              actual={(row["page"],row["viewport"],row["state"]) for row in manifest["screenshots"]}
+              assert len(manifest["screenshots"])==len(actual)==14, (directory,len(manifest["screenshots"]),len(actual))
+              assert actual==expected, (directory,sorted(expected-actual),sorted(actual-expected))
+              assert all(row["main_document_status"]==200 for row in manifest["screenshots"]), directory
+              assert all(row["final_route"]==row["route"] for row in manifest["screenshots"]), directory
+              assert all(pathlib.Path(f".replica/{directory}",row["path"]).is_file() for row in manifest["screenshots"]), directory
           p=".replica/baseline/manifest.json"
           m=json.load(open(p)); m["baseline_set_id"]="owned-ci-baseline"
           with open(p,"w") as f: json.dump(m,f,indent=2)
-          c=json.load(open(".replica/candidate/manifest.json"))
           vp={"pixel":{"maxDifferentRatio":0,"maxMeanAbsoluteError":0},"maxCandidateAgeMinutes":30,
-              "requiredStates":[{"page":x["page"],"viewport":x["viewport"],"state":x["state"]} for x in c["screenshots"]],
+              "requiredStates":[{"page":page,"viewport":viewport,"state":state} for page,viewport,state in sorted(expected)],
               "regions":[],"failOnMissingImages":True}
           with open(".replica/visual-policy.json","w") as f: json.dump(vp,f)
           PY
@@ -214,7 +220,30 @@ jobs:
           node tests/visual-evaluator.mjs
 
       - name: Cleanup owned fixture data
-        run: python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json cleanup --fixture | tee .replica/ci-evidence/cleanup.json
+        run: |
+          set -euo pipefail
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json cleanup --fixture | tee .replica/ci-evidence/cleanup.json
+          python3 - <<'PY' | tee .replica/ci-evidence/cleanup-verification.json
+          import importlib.util, json, pathlib, sys
+          path=pathlib.Path("adapters/wordpress-staging/adapter.py")
+          spec=importlib.util.spec_from_file_location("staging_cleanup_verify",path)
+          module=importlib.util.module_from_spec(spec); sys.modules[spec.name]=module; spec.loader.exec_module(module)
+          adapter=module.StagingAdapter(json.load(open(".replica/staging.json")))
+          sentinel=json.load(open(".replica/ci-evidence/sentinel-before-cleanup.json"))
+          code=f"""
+          $products=new WP_Query(['post_type'=>'product','post_status'=>'any','posts_per_page'=>-1,'meta_key'=>'_replica_fixture_marker','meta_value'=>'replica-fixture','fields'=>'ids']);
+          $orders=wc_get_orders(['limit'=>-1,'type'=>'shop_order','return'=>'ids','meta_query'=>[['key'=>'_replica_fixture_marker','value'=>'replica-fixture']]]);
+          $sentinel_product=get_post({int(sentinel['sentinel_product_id'])});
+          $sentinel_order=wc_get_order({int(sentinel['sentinel_order_id'])});
+          echo json_encode(['fixture_products'=>count($products->posts),'fixture_orders'=>count($orders),'sentinel_product_exists'=>(bool)$sentinel_product,'sentinel_order_exists'=>(bool)$sentinel_order]);
+          """
+          result=json.loads(adapter.run_wp_cli(["eval",code]))
+          assert result["fixture_products"]==0, result
+          assert result["fixture_orders"]==0, result
+          assert result["sentinel_product_exists"], result
+          assert result["sentinel_order_exists"], result
+          print(json.dumps({"status":"pass",**result}))
+          PY
 
       - name: Repository file gate
         run: python3 scripts/check_repo_files.py
@@ -226,8 +255,11 @@ jobs:
           name: woocommerce-staging-core-evidence
           path: |
             .replica/ci-evidence
+            .replica/baseline/manifest.json
+            .replica/baseline/screenshots
             .replica/candidate/manifest.json
             .replica/candidate/screenshots
+            .replica/candidate/diagnostics
             .replica/visual/reports
           if-no-files-found: ignore
           retention-days: 7

@@ -13,8 +13,27 @@ const {chromium}=require('playwright');
 const ALLOWED_STATES=new Set(['default','menu-open','cart-nonempty']);
 const ident=v=>typeof v==='string'&&/^[a-z0-9][a-z0-9_.-]{0,79}$/.test(v);
 const ownedSelector=v=>typeof v==='string'&&/^\[data-replica-[a-z0-9-]+\]$/.test(v);
+const assertionSelector=v=>typeof v==='string'&&/^(?:[a-z][a-z0-9-]*)?(?:\.[a-z0-9_-]+)+$|^\[data-replica-[a-z0-9-]+(?:="[a-z0-9_.-]+")?\]$/i.test(v);
 const load=p=>JSON.parse(fs.readFileSync(p,'utf8'));
 const digest=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+
+export class CaptureError extends Error{
+  constructor(code,message,details={}){super(message);this.name='CaptureError';this.code=code;this.details=details;}
+}
+
+const stateSpec=value=>typeof value==='string'?{id:value}:value;
+const pathOnly=value=>{const p=new URL(value,'http://owned.invalid').pathname;return p.endsWith('/')?p:`${p}/`;};
+
+function validateAssertions(assertions,label){
+  if(assertions===undefined)return;
+  if(!Array.isArray(assertions))throw Error(`${label} assertions must be an array`);
+  for(const item of assertions){
+    if(!item||!assertionSelector(item.selector))throw Error(`${label} assertion selector is not allowed`);
+    if(item.minCount!==undefined&&(!Number.isInteger(item.minCount)||item.minCount<0))throw Error(`${label} minCount is invalid`);
+    if(item.maxCount!==undefined&&(!Number.isInteger(item.maxCount)||item.maxCount<0))throw Error(`${label} maxCount is invalid`);
+    if(item.text!==undefined&&(typeof item.text!=='string'||!item.text.length||item.text.length>160))throw Error(`${label} text is invalid`);
+  }
+}
 
 function validatePolicy(policy){
   if(!policy||policy.authorization!=='owned-staging')throw Error('candidate capture requires authorization=owned-staging');
@@ -28,7 +47,14 @@ function validatePolicy(policy){
     pages.add(item.page);
     if(typeof item.route!=='string'||!item.route.startsWith('/')||item.route.startsWith('//'))throw Error('route must be same-origin relative path');
     if(!Array.isArray(item.states)||!item.states.length)throw Error('states required');
-    for(const state of item.states)if(!ALLOWED_STATES.has(state))throw Error('unsupported candidate state');
+    for(const raw of item.states){
+      const state=stateSpec(raw);
+      if(!state||!ALLOWED_STATES.has(state.id))throw Error('unsupported candidate state');
+      if(state.action!==undefined&&!['menuToggle','addFixture'].includes(state.action))throw Error('unsupported candidate action');
+      if(state.setupRoute!==undefined&&(typeof state.setupRoute!=='string'||!state.setupRoute.startsWith('/')||state.setupRoute.startsWith('//')))throw Error('setupRoute must be same-origin relative path');
+      if(state.expectedPath!==undefined&&(typeof state.expectedPath!=='string'||!state.expectedPath.startsWith('/')||state.expectedPath.startsWith('//')))throw Error('expectedPath must be same-origin relative path');
+      validateAssertions(state.before,'before'); validateAssertions(state.required,'required'); validateAssertions(state.forbidden,'forbidden');
+    }
   }
   const ids=new Set();
   for(const viewport of policy.viewports){
@@ -37,8 +63,9 @@ function validatePolicy(policy){
     for(const key of ['width','height'])if(!Number.isInteger(viewport[key])||viewport[key]<1||viewport[key]>4000)throw Error('invalid viewport');
   }
   const hooks=policy.ownedSelectors||{};
-  if(policy.routes.some(x=>x.states.includes('menu-open'))&&!ownedSelector(hooks.menuToggle))throw Error('menu-open requires controlled selector');
-  if(policy.routes.some(x=>x.states.includes('cart-nonempty'))&&!ownedSelector(hooks.addFixture))throw Error('cart-nonempty requires controlled selector');
+  const specs=policy.routes.flatMap(x=>x.states.map(stateSpec));
+  if(specs.some(x=>x.id==='menu-open'||x.action==='menuToggle')&&!ownedSelector(hooks.menuToggle))throw Error('menu-open requires controlled selector');
+  if(specs.some(x=>x.id==='cart-nonempty'||x.action==='addFixture')&&!ownedSelector(hooks.addFixture))throw Error('cart-nonempty requires controlled selector');
   return {policy,base};
 }
 
@@ -92,14 +119,43 @@ function normalizeScreenshotRgba(file){
   writePng(file,width,height,rgba);
 }
 
+function redirectChain(response){
+  if(!response)return [];
+  const chain=[];let request=response.request();
+  while(request){chain.unshift(request.url());request=request.redirectedFrom();}
+  if(chain.at(-1)!==response.url())chain.push(response.url());
+  return chain;
+}
+
+async function checkAssertions(page,items,phase){
+  const results=[];
+  for(const item of items||[]){
+    const loc=page.locator(item.selector),count=await loc.count();
+    const visibleCount=count?await loc.evaluateAll(nodes=>nodes.filter(node=>{const s=getComputedStyle(node),r=node.getBoundingClientRect();return s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0;}).length):0;
+    const texts=count?await loc.allTextContents():[];
+    const min=item.minCount??1,max=item.maxCount??Number.MAX_SAFE_INTEGER;
+    const textOk=item.text===undefined||texts.some(text=>text.includes(item.text));
+    results.push({selector:item.selector,count,visibleCount,text:item.text??null,status:count>=min&&count<=max&&visibleCount>=Math.min(min,1)&&textOk?'pass':'fail'});
+  }
+  const failed=results.filter(x=>x.status!=='pass');
+  if(failed.length)throw new CaptureError('required_content_missing',`${phase} assertions failed`,{phase,failed});
+  return results;
+}
+
 async function prepareState(page,state,hooks){
-  if(state==='default')return;
-  const chosen=state==='menu-open'?hooks.menuToggle:hooks.addFixture;
+  const action=state.action||(state.id==='menu-open'?'menuToggle':state.id==='cart-nonempty'?'addFixture':null);
+  if(!action)return null;
+  const chosen=hooks[action];
   const loc=page.locator(chosen);
-  if(await loc.count()!==1)throw Error(`controlled state selector missing or ambiguous: ${state}`);
-  await loc.click();
-  await page.waitForLoadState('networkidle',{timeout:3000}).catch(()=>{});
-  await page.waitForTimeout(80);
+  if(await loc.count()!==1)throw new CaptureError('state_not_reached',`controlled state selector missing or ambiguous: ${state.id}`,{selector:chosen,count:await loc.count()});
+  let response=null;
+  if(action==='addFixture'){
+    [response]=await Promise.all([page.waitForNavigation({waitUntil:'networkidle',timeout:10000}),loc.click()]);
+  }else{
+    await loc.click();
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  }
+  return response;
 }
 
 export async function captureCandidate({policyFile,out}){
@@ -110,7 +166,8 @@ export async function captureCandidate({policyFile,out}){
   const browser=await chromium.launch({headless:true});
   const rows=[],failedImages=[];
   try{
-    for(const item of policy.routes)for(const viewport of policy.viewports)for(const state of item.states){
+    for(const item of policy.routes)for(const viewport of policy.viewports)for(const rawState of item.states){
+      const state=stateSpec(rawState);
       const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},deviceScaleFactor:1,serviceWorkers:'block'});
       const page=await context.newPage(),failures=[];
       page.on('requestfailed',req=>{if(req.resourceType()==='image')failures.push({url:req.url(),reason:req.failure()?.errorText||'requestfailed'});});
@@ -120,20 +177,40 @@ export async function captureCandidate({policyFile,out}){
         if(['data:','blob:'].includes(u.protocol)||u.origin===base.origin)return route.continue();
         return route.abort('blockedbyclient');
       });
-      await page.goto(new URL(item.route,base).href,{waitUntil:'networkidle',timeout:30000});
-      if(new URL(page.url()).origin!==base.origin)throw Error('cross-origin redirect blocked');
-      await prepareState(page,state,policy.ownedSelectors||{});
-      if(new URL(page.url()).origin!==base.origin)throw Error('state action left owned preview origin');
-      const file=`${safeName(item.page)}.${safeName(viewport.id)}.${safeName(state)}.png`;
-      const full=path.join(shots,file);
-      await page.screenshot({path:full,fullPage:false,animations:'disabled'});
-      normalizeScreenshotRgba(full);
-      rows.push({page:item.page,route:item.route,viewport:viewport.id,state,path:`screenshots/${file}`,sha256:sha(full),width:viewport.width,height:viewport.height,timestamp:new Date().toISOString()});
-      for(const failure of failures)failedImages.push({page:item.page,viewport:viewport.id,state,...failure});
+      let response;
+      try{
+        const firstRoute=state.setupRoute||item.route;
+        response=await page.goto(new URL(firstRoute,base).href,{waitUntil:'networkidle',timeout:30000});
+        if(new URL(page.url()).origin!==base.origin)throw new CaptureError('unexpected_route','cross-origin redirect blocked',{requested:firstRoute,final:page.url()});
+        if(!response||response.status()>=400)throw new CaptureError('unexpected_route','main document request failed',{requested:firstRoute,final:page.url(),status:response?.status()??null});
+        const before=await checkAssertions(page,state.before,'before');
+        const actionResponse=await prepareState(page,state,policy.ownedSelectors||{});
+        if(actionResponse)response=actionResponse;
+        if(state.setupRoute){response=await page.goto(new URL(item.route,base).href,{waitUntil:'networkidle',timeout:30000});}
+        if(new URL(page.url()).origin!==base.origin)throw new CaptureError('unexpected_route','state action left owned preview origin',{requested:item.route,final:page.url()});
+        const expectedPath=pathOnly(state.expectedPath||item.route),actualPath=pathOnly(page.url());
+        if(actualPath!==expectedPath)throw new CaptureError('unexpected_route','final route does not match capture contract',{requested:item.route,expectedPath,actualPath,final:page.url()});
+        const assertions=await checkAssertions(page,state.required,'required');
+        await checkAssertions(page,(state.forbidden||[]).map(x=>({...x,minCount:0,maxCount:0})),'forbidden');
+        const file=`${safeName(item.page)}.${safeName(viewport.id)}.${safeName(state.id)}.png`;
+        const full=path.join(shots,file);
+        const scroll=await page.evaluate(()=>({x:scrollX,y:scrollY}));
+        await page.screenshot({path:full,fullPage:false,animations:'disabled'});
+        normalizeScreenshotRgba(full);
+        const cookies=await context.cookies();
+        rows.push({page:item.page,route:item.route,final_route:actualPath,main_document_status:response?.status()??null,redirect_chain:redirectChain(response),viewport:viewport.id,state:state.id,path:`screenshots/${file}`,sha256:sha(full),width:viewport.width,height:viewport.height,device_scale_factor:1,scroll,assertions:{before,required:assertions},session_cookie_count:cookies.length,timestamp:new Date().toISOString()});
+      }catch(error){
+        const diagnosticDir=path.join(root,'diagnostics');fs.mkdirSync(diagnosticDir,{recursive:true});
+        const diagnosticName=`${safeName(item.page)}.${safeName(viewport.id)}.${safeName(state.id)}`;
+        await page.screenshot({path:path.join(diagnosticDir,`${diagnosticName}.png`),fullPage:false,animations:'disabled'}).catch(()=>{});
+        fs.writeFileSync(path.join(diagnosticDir,`${diagnosticName}.json`),JSON.stringify({status:'failed',code:error.code||'capture_failed',message:error.message,details:error.details||{},requested_route:item.route,final_url:page.url(),viewport:viewport.id,state:state.id},null,2)+'\n');
+        throw error;
+      }
+      for(const failure of failures)failedImages.push({page:item.page,viewport:viewport.id,state:state.id,...failure});
       await context.close();
     }
   }finally{await browser.close();}
-  const manifest={capture_version:'1',candidate_set_id:crypto.randomUUID(),preview_origin:base.origin,capture_policy_sha256:digest(policyPath),screenshots:rows,failedImages,missingImages:[],fonts:[],captured_at:new Date().toISOString()};
+  const manifest={capture_version:'1',candidate_set_id:crypto.randomUUID(),preview_origin:base.origin,capture_policy_sha256:digest(policyPath),runtime:{browser:'chromium',browser_version:browser.version(),device_scale_factor:1,source_sha:process.env.GITHUB_SHA||process.env.REPLICA_SOURCE_SHA||null,run_id:process.env.GITHUB_RUN_ID||process.env.REPLICA_RUN_ID||null},screenshots:rows,failedImages,missingImages:[],fonts:[],captured_at:new Date().toISOString()};
   const manifestPath=path.join(root,'manifest.json');
   fs.writeFileSync(manifestPath,JSON.stringify(manifest,null,2)+'\n');
   return {status:'captured',candidate_path:root,candidate_manifest_sha:sha(manifestPath),screenshot_count:rows.length};
@@ -159,5 +236,5 @@ async function main(){
   throw Error('usage: capture --policy FILE --out DIR | handoff --capture-policy FILE --candidate-out DIR --baseline DIR --visual-policy FILE --visual-out DIR');
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve(fileURLToPath(import.meta.url))){
-  main().then(code=>{process.exitCode=code;}).catch(err=>{console.error(JSON.stringify({status:'invalid',error:err.message}));process.exitCode=3;});
+  main().then(code=>{process.exitCode=code;}).catch(err=>{console.error(JSON.stringify({status:'invalid',code:err.code||'capture_invalid',error:err.message,details:err.details||{}}));process.exitCode=3;});
 }

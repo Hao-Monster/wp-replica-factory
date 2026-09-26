@@ -63,3 +63,13 @@ python3 adapters/wordpress-staging/adapter.py --config staging.json rollback
 ```
 
 框架 CI 只使用隔离 Compose fixture；不访问用户 staging、真实 SSH、真实 payment/mail 或商业目标站。
+
+## Candidate 页面状态
+
+受控 capture policy 固定列出全部 14 个 page/viewport/state case，不从本次实际截图反推
+`requiredStates`。每个 case 使用独立 browser context；同一 case 的准备动作、WooCommerce
+session 与截图共享 context。cart empty/nonempty、checkout、home、category、product 必须在截图前
+验证最终路由和真实页面 DOM。失败只生成 diagnostics，不得进入成功 candidate manifest。
+
+CI 对同一受控 fixture 独立执行 baseline smoke capture 与 candidate capture，再以零阈值运行
+`evaluate` 和 `verify-report`。这是接口、编码和可重复性 smoke，不是商业站 baseline 审批或视觉正确性证明。
