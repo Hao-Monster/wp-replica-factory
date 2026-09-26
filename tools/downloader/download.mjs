@@ -11,6 +11,7 @@ import { classify } from './vendor/open-design/asset-harvest.mjs';
 import { scrollThroughPage } from './vendor/open-design/mirror-site.mjs';
 import { captureResponses } from './vendor/open-design/network-capture.mjs';
 import { localize } from './localize.mjs';
+import { detectChallenge } from './challenge-detector.mjs';
 
 export async function download(input,output,options={}) {
   const policy=policyFor(input);
@@ -21,7 +22,8 @@ export async function download(input,output,options={}) {
   const root=newOutput(output);
   const run_id=crypto.randomUUID(), session_id=crypto.randomUUID(), started_at=new Date().toISOString();
   const manifest={schema:SCHEMA,run_id,session_id,started_at,engine:{name:'OpenDesign web-clone selective adapter',version:'0.1.0',upstream:'1b47e60bd46641469fcd8b69c496c4e3a548bc28',playwright:playwrightVersion,node:process.version,os:os.platform(),browser:null},policy,policy_sha256:sha(json(policy)),status:'failed',mirror_mode:'original-html-and-client-scripts',limitations:['authorized-public MVP supports HTTPS, one page origin, explicit asset origins and GET/HEAD only','no automatic interaction discovery','hash routes, iframe, Shadow DOM, Canvas and server-side business state are not generalized','responsive candidates not requested by configured viewports are reported; no automatic supplemental GET','conflicting response variants are retained but default replay selects the first and marks partial'],failures:[],har:{enabled:policy.har,session_id,sensitive:true,uploaded:false}};
-  const routes=[],resources=[],captures=[],gaps=[],warnings=[],networkFailures=[],networkEvents=[];
+  const routes=[],resources=[],captures=[],gaps=[],warnings=[],networkFailures=[],networkEvents=[],pageRuntimeErrors=[];
+  let challengeResult={detected:false,kind:null,vendor:null,confidence:'none',signals:[]};
   manifest.engine.adapter_sha256=adapterFingerprint();
   const byKey=new Map(), routeMap=new Map();
   let current={session_id},totalBytes=0,context,browser,proxy,listener,closed=false,budgetExpired=false;
@@ -82,13 +84,12 @@ export async function download(input,output,options={}) {
           current={session_id,capture_id,route:route.url,viewport,state:state.name};
           const page=await context.newPage();await page.setViewportSize(viewport);
           page.setDefaultTimeout(remaining());
-          page.on('pageerror',error=>fail({reason:'page_error',route:route.url,state:state.name,detail:error.message}));
-          page.on('console',message=>{if(message.type()==='error')fail({reason:'console_error',route:route.url,detail:message.text()});});
+          page.on('pageerror',error=>pageRuntimeErrors.push({type:'pageerror',route:route.url,state:state.name,detail:error.message}));
+          page.on('console',message=>{if(message.type()==='error')pageRuntimeErrors.push({type:'console_error',route:route.url,state:state.name,detail:message.text()});});
           try {
             const response=await page.goto(route.url,{waitUntil:'domcontentloaded',timeout:remaining()});
             if(!response) throw new Error('navigation_http_0');
-            if([401,403].includes(response.status())) throw new Error('authorization_or_challenge_required');
-            if(response.status()>=400) throw new Error('navigation_http_'+response.status());
+            if(response.status()>=400 && ![401,403,429].includes(response.status())) throw new Error('navigation_http_'+response.status());
             if(!policy.pageOrigins.includes(new URL(page.url()).origin)) throw new Error('redirect_outside_scope');
             route.final_url=normalizeUrl(page.url());
             await page.waitForLoadState('networkidle',{timeout:remaining()});
@@ -98,8 +99,10 @@ export async function download(input,output,options={}) {
               password:document.querySelectorAll('input[type=password]').length,
               captcha:document.querySelectorAll('iframe[src*="captcha" i],[data-sitekey],[class*="captcha" i]').length,
               text:(document.title+' '+(document.body?.innerText||'')).slice(0,12000),
+              html:(document.documentElement?.outerHTML||'').slice(0,20000),
             }));
-            if(challenge.password||challenge.captcha||/\b(?:captcha|multi[- ]?factor|\bmfa\b|sign[ -]?in|log[ -]?in|verify you are human|bot challenge)\b/i.test(challenge.text)) throw new Error('authorization_or_challenge_required');
+            const candidate=detectChallenge({url:route.url,status:response.status(),headers:await response.allHeaders(),title:await page.title(),body:challenge.html+' '+challenge.text,pageRuntimeErrors:pageRuntimeErrors.filter(e=>e.route===route.url),resources});
+            if(candidate.detected) { challengeResult=candidate; throw new Error('challenge_detected'); }
             for(const action of state.actions) {
               if(action.type==='scroll') {
                 if(action.selector) await page.locator(action.selector).scrollIntoViewIfNeeded({timeout:remaining()});
@@ -174,7 +177,11 @@ export async function download(input,output,options={}) {
   };
   put(root,'reports/network-sanitized.json',json(sanitizedNetwork));
   try {localize(root,policy,routes,resources,gaps,warnings);}catch(error){fail({reason:'localization',detail:error.message});}
-  manifest.failures.push(...gaps);
+    manifest.failures.push(...gaps);
+  manifest.pageRuntimeErrors=pageRuntimeErrors.map(e=>({...e,detail:String(e.detail).replace(/SECRET_CANARY_[A-Z_]+/g,'<redacted>')}));
+  manifest.challenge=challengeResult;
+  put(root,'reports/page-runtime-errors.json',json({schema:1,errors:manifest.pageRuntimeErrors}));
+  if(challengeResult.detected) put(root,'reports/challenge.json',json({schema:1,detected:true,kind:challengeResult.kind,vendor:challengeResult.vendor,confidence:challengeResult.confidence,signals:challengeResult.signals,url:sanitizeUrl(policy.url,policy.sensitiveQueryKeys),timestamp:new Date().toISOString(),recommended_action:'interactive_browser_recon'}));
   manifest.captures=captures;
   manifest.counts={discovered:routes.length,visited:routes.filter(r=>r.status==='visited').length,excluded:routes.filter(r=>r.status==='excluded').length,failed:routes.filter(r=>r.status==='failed').length,pending:routes.filter(r=>r.status==='pending').length,resources:resources.length,saved_resources:resources.filter(r=>r.status==='saved').length,failed_resources:resources.filter(r=>r.status==='failed').length,by_kind:{},raw_bytes:totalBytes};
   for(const r of resources.filter(r=>r.status==='saved')) manifest.counts.by_kind[r.kind]=(manifest.counts.by_kind[r.kind]||0)+1;
@@ -182,8 +189,9 @@ export async function download(input,output,options={}) {
   const safety=manifest.failures.some(f=>['private_address','dns_failed','scheme_blocked','credentialed_url','blocked_business_request','redirect_limit'].includes(f.reason));
   const needsApproval=manifest.failures.some(f=>f.reason==='needs_approval');
   const exhausted=policy.mode==='authorized-public'&&(manifest.failures.some(f=>/budget/.test(f.reason))||routes.some(r=>r.status==='pending'&&['max_pages','max_depth','time_budget'].includes(r.reason)));
+  manifest.reason=challengeResult.detected?'challenge_detected':undefined;
   manifest.status=policy.mode==='authorized-public'
-    ?(auth||safety?'blocked':exhausted?'exhausted':needsApproval?'partial':!manifest.counts.visited?'failed':manifest.failures.length||manifest.counts.pending||manifest.counts.failed?'partial':'complete')
+    ?(challengeResult.detected?'blocked':auth||safety?'blocked':exhausted?'exhausted':needsApproval?'partial':!manifest.counts.visited?'failed':manifest.failures.length||manifest.counts.pending||manifest.counts.failed?'partial':'complete')
     :(auth?'blocked':!manifest.counts.visited?'failed':manifest.failures.length||manifest.counts.pending||manifest.counts.failed?'partial':'complete');
   manifest.core_sha256=coreDigest(routes,resources);manifest.finished_at=new Date().toISOString();
   manifest.warnings=warnings;

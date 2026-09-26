@@ -6,6 +6,7 @@ import json, shutil
 ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT/'.replica/downloader-acceptance.json'
 PUBLIC_REPORT = ROOT/'.replica/public-mvp-acceptance.json'
+CHALLENGE_REPORT = ROOT/'.replica/challenge-acceptance.json'
 DEST = ROOT/'.replica/ci-evidence'
 if DEST.exists():
     shutil.rmtree(DEST)
@@ -87,6 +88,10 @@ if PUBLIC_REPORT.is_file():
     else:
         save_json('public-mvp-failure.json',public_report,{'canary','token','session'})
         copied.append('public-mvp-failure.json')
+
+if CHALLENGE_REPORT.is_file():
+    save_json('challenge-acceptance.json', json.loads(CHALLENGE_REPORT.read_text(encoding='utf-8')), {'canary','token','session'})
+    copied.append('challenge-acceptance.json')
 
 save_json('artifact-allowlist.json', {'files': copied, 'excluded': ['raw', 'site', 'network', 'HAR', 'font binaries', 'browser profiles'], 'retention_days': 7})
 for file in DEST.rglob('*'):

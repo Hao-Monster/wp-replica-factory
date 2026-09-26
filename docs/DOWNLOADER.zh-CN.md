@@ -163,6 +163,14 @@ raw、site、HAR、字体文件及第三方素材不上传，全部运行产物�
 CI/采集边界的变更需要维护者审阅，不自动合并或关闭 Issue #2。
 ## 8. authorized-public MVP
 
+## 9. Challenge-aware capture
+
+Downloader 将访问控制页面视为安全停止信号，不尝试绕过。统一 detector 结合主文档状态、标题/DOM 结构、challenge 资源和页面运行时错误，支持 `login`、`password`、`captcha`、`mfa`、`waf_bot_challenge`、`rate_limited` 与 `access_denied`。确认后 `manifest.status=blocked`、`manifest.reason=challenge_detected`，并写入脱敏的 `reports/challenge.json`；不继续 discovery、不刷新、不点击 challenge、不批准第三方 challenge origin。
+
+页面自身的 `pageerror` 与 `console.error` 进入 `pageRuntimeErrors` 和 `reports/page-runtime-errors.json`。例如 `AwsWafIntegration is not defined` 单独出现时不会被当成 Downloader 崩溃，也不会单独证明 AWS WAF；只有与 challenge 文档/状态/资源组合时才分类为 `waf_bot_challenge`。普通文章提到 “AWS WAF CAPTCHA” 不会触发 blocked。
+
+challenge 制品会被 `verify` 拒绝，`preview` 不会把它作为正常镜像打开。Site Operator 应停止自动采集，使用正常交互式浏览器人工 reconnaissance，再把脱敏证据交回维护流程。该 fallback 不包括 challenge cookie、token、验证码或登录态。
+
 示例策略：`examples/downloader.public.policy.example.json`。这是技术授权模式，不等于版权、商标或数据使用许可；操作者仍须拥有目标站采集/复刻权限。
 
 ```bash
