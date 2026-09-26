@@ -16,6 +16,14 @@ VIEWPORTS = {
     'mobile': {'width': 390, 'height': 844, 'dpr': 1, 'locale': 'en-US', 'timezone': 'UTC', 'expected_columns': 2},
 }
 TEXT_RESOURCE_SUFFIXES = {'.css', '.html', '.js', '.json', '.svg'}
+REQUIRED_STATES = {
+    'grid': {'grid-default'},
+    'lazy': {'lazy-waiting', 'lazy-loaded'},
+    'filters': {
+        'menu-open', 'menu-closed', 'filter-all', 'filter-home',
+        'filter-stationery', 'filter-bags', 'filter-missing', 'filter-clear',
+    },
+}
 
 
 def sha(path: Path) -> str:
@@ -61,6 +69,57 @@ def validate_products(data: dict) -> list[str]:
             raise RuntimeError(f'product image is not a listed fixture resource: {product["image"]}')
     return ids
 
+def validate_state_matrix(matrix: object) -> dict:
+    if not isinstance(matrix, dict) or not isinstance(matrix.get('pages'), list):
+        raise RuntimeError('state matrix pages must be a list')
+    pages_by_id = {}
+    state_count = 0
+    for page in matrix['pages']:
+        if not isinstance(page, dict) or not isinstance(page.get('page_id'), str):
+            raise RuntimeError('state matrix page is missing page_id')
+        page_id = page['page_id']
+        if page_id in pages_by_id:
+            raise RuntimeError(f'duplicate page_id: {page_id}')
+        pages_by_id[page_id] = page
+    for page_id, required_states in REQUIRED_STATES.items():
+        page = pages_by_id.get(page_id)
+        if page is None:
+            raise RuntimeError(f'missing required page: {page_id}')
+        states = page.get('states')
+        if not isinstance(states, list):
+            raise RuntimeError(f'states must be a list for page: {page_id}')
+        state_ids = []
+        for state in states:
+            if not isinstance(state, dict) or not isinstance(state.get('state_id'), str):
+                raise RuntimeError(f'state is missing state_id in page: {page_id}')
+            state_ids.append(state['state_id'])
+        duplicates = sorted({state_id for state_id in state_ids if state_ids.count(state_id) > 1})
+        if duplicates:
+            raise RuntimeError(f'duplicate state_id in {page_id}: {duplicates}')
+        missing_states = sorted(required_states - set(state_ids))
+        if missing_states:
+            raise RuntimeError(f'missing required state in {page_id}: {missing_states}')
+        state_count += len(states)
+    for page_id, page in pages_by_id.items():
+        if page_id not in REQUIRED_STATES:
+            states = page.get('states')
+            if not isinstance(states, list):
+                raise RuntimeError(f'states must be a list for page: {page_id}')
+            state_ids = [state.get('state_id') if isinstance(state, dict) else None for state in states]
+            if any(not isinstance(state_id, str) for state_id in state_ids):
+                raise RuntimeError(f'state is missing state_id in page: {page_id}')
+            duplicates = sorted({state_id for state_id in state_ids if state_ids.count(state_id) > 1})
+            if duplicates:
+                raise RuntimeError(f'duplicate state_id in {page_id}: {duplicates}')
+            state_count += len(states)
+    return {'page_count': len(pages_by_id), 'state_count': state_count, 'pages_by_id': pages_by_id}
+
+
+def load_state_matrix() -> tuple[dict, dict]:
+    matrix = json.loads((FIXTURE / 'STATE_MATRIX.json').read_text(encoding='utf-8'))
+    return matrix, validate_state_matrix(matrix)
+
+
 def verify_fixture() -> dict:
     expected_path = FIXTURE / 'RESOURCE_MANIFEST.json'
     if not expected_path.is_file():
@@ -74,11 +133,14 @@ def verify_fixture() -> dict:
     missing = sorted(required - listed)
     if missing:
         raise RuntimeError(f'fixture manifest missing required resources: {missing}')
-    states = json.loads((FIXTURE / 'STATE_MATRIX.json').read_text(encoding='utf-8'))
-    page_ids = [x['page_id'] for x in states['pages']]
-    if len(page_ids) != len(set(page_ids)) or set(page_ids) != {'grid', 'lazy', 'filters'}:
-        raise RuntimeError('state matrix page IDs are missing or duplicated')
-    return {'fixture_version': expected['fixture_version'], 'resource_count': len(expected['resources']), 'manifest_sha256': sha(expected_path), 'state_count': len(states['pages'])}
+    _, state_summary = load_state_matrix()
+    return {
+        'fixture_version': expected['fixture_version'],
+        'resource_count': len(expected['resources']),
+        'manifest_sha256': sha(expected_path),
+        'page_count': state_summary['page_count'],
+        'state_count': state_summary['state_count'],
+    }
 
 
 def _no_symlink_components(path: Path) -> None:
@@ -285,6 +347,7 @@ def browser_result(summaries: list[dict]) -> tuple[dict, int]:
 def browser_test() -> int:
     from playwright.sync_api import sync_playwright
     summaries = []
+    _, state_summary = load_state_matrix()
     with tempfile.TemporaryDirectory(prefix='owned-fixture-') as temp:
         sandbox = Path(temp); (sandbox / SANDBOX_MARKER).write_text('test-owned-sandbox\n', encoding='utf-8')
         with sync_playwright() as playwright:
@@ -312,7 +375,7 @@ def browser_test() -> int:
                             page.locator(f'[data-filter={filter_id}]').click(); states[filter_id]={'visible_ids':page.locator('#filter-grid .product-card').evaluate_all('(els)=>els.map(e=>e.dataset.productId)'), 'selected':page.locator(f'[data-filter={filter_id}]').get_attribute('class')}
                         viewport_observations['filters']={'menu_open':menu_open,'menu_closed':menu_closed,'states':states}; observations[viewport_id]=viewport_observations
                         expected_filters={};
-                        for state in json.loads((FIXTURE / 'STATE_MATRIX.json').read_text(encoding='utf-8'))['pages'][2]['states']:
+                        for state in state_summary['pages_by_id']['filters']['states']:
                             if state['state_id'].startswith('filter-'): expected_filters[state['state_id'][7:]]=state['expected_ids']
                         if any(states[k]['visible_ids'] != v for k,v in expected_filters.items()): raise AssertionError(f'filter state observation mismatch: {states}'); page.close()
                         summaries_expected= {'columns':spec['expected_columns']}
