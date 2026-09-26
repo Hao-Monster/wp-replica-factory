@@ -50,6 +50,8 @@ HTTPS、HTTP 状态、WordPress critical error 和 critical mixed-content 失败
 `replica-fixture-001` 到 `004`。Order test 必须通过独立 `ORDER_GATE`：真实支付禁用、
 邮件禁用、active business webhook=0、外部库存同步禁用、fixture marker 有效；否则
 `TEST_ORDER_BLOCKED`。这些 side-effect gate 不阻塞 theme deploy 或 visual testing。
+`cleanup` 即使底层订单查询返回了额外对象，也必须在删除每个订单前重新核验其
+`_replica_fixture_marker`；查询条件不能替代逐对象所有权检查。
 
 示例：
 

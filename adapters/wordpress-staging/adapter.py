@@ -779,10 +779,14 @@ $products=new WP_Query(['post_type'=>'product','post_status'=>'any','posts_per_p
 foreach($products->posts as $id){{wp_delete_post($id,true);}}
 $orders=wc_get_orders(['limit'=>-1,'type'=>'shop_order','return'=>'objects',
   'meta_query'=>[['key'=>'_replica_fixture_marker','value'=>$marker]]]);
-foreach($orders as $order){{$order->delete(true);}}
+$deleted_orders=0;
+foreach($orders as $order){{
+  if((string)$order->get_meta('_replica_fixture_marker') !== (string)$marker){{continue;}}
+  $order->delete(true); $deleted_orders++;
+}}
 $term=get_term_by('slug','replica-fixture','product_cat');
 if($term && !is_wp_error($term)){{wp_delete_term($term->term_id,'product_cat');}}
-echo json_encode(['deleted_products'=>count($products->posts),'deleted_orders'=>count($orders),'marker'=>$marker]);
+echo json_encode(['deleted_products'=>count($products->posts),'deleted_orders'=>$deleted_orders,'marker'=>$marker]);
 """
         raw = self.run_wp_cli(["eval", code])
         return {"status": "cleaned", "marker": marker, "runtime": raw}

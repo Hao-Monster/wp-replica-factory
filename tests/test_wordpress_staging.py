@@ -213,6 +213,9 @@ class SideEffectGateTests(unittest.TestCase):
         code=next(args[1] for args in seen if args[0]=="eval")
         self.assertIn("wc_get_orders",code)
         self.assertIn("_replica_fixture_marker",code)
+        self.assertIn("$order->get_meta('_replica_fixture_marker')",code)
+        self.assertIn("continue",code)
+        self.assertIn("$deleted_orders++",code)
         self.assertNotIn("TRUNCATE",code.upper())
 
 class ControlledWorkflowContractTests(unittest.TestCase):
