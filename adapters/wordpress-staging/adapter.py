@@ -339,6 +339,7 @@ class StagingAdapter:
                 "-w", self.runtime["containerWpPath"],
                 "--env-file", env_file,
                 EPHEMERAL_WPCLI_IMAGE,
+                "wp",
                 *args,
                 "--path=" + self.runtime["containerWpPath"],
                 "--allow-root",

@@ -69,7 +69,10 @@ class ConfigAndRuntimeTests(unittest.TestCase):
         runner=FakeRunner(container_has_wp=False); adapter=staging.StagingAdapter(base_config(), runner=runner)
         out=adapter.run_wp_cli(["eval","echo wp_get_environment_type();"])
         self.assertEqual(out,"staging")
-        self.assertTrue(any(call[0][:2]==["docker","run"] for call in runner.calls))
+        docker_runs=[call[0] for call in runner.calls if call[0][:2]==["docker","run"]]
+        self.assertTrue(docker_runs)
+        image_index=docker_runs[0].index(staging.EPHEMERAL_WPCLI_IMAGE)
+        self.assertEqual(docker_runs[0][image_index+1],"wp")
         self.assertTrue(runner.assert_mode_0600)
 
     def test_ephemeral_cli_env_file_is_cleaned(self):

@@ -60,7 +60,7 @@ jobs:
           NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$CID" | head -n1)"
           test -n "$NET"
           wpcli() {
-            docker run --rm --network "$NET" --volumes-from "$CID" -w /var/www/html --env-file "$ENV_FILE" wordpress:cli "$@" --path=/var/www/html --allow-root
+            docker run --rm --network "$NET" --volumes-from "$CID" -w /var/www/html --env-file "$ENV_FILE" wordpress:cli wp "$@" --path=/var/www/html --allow-root
           }
           wpcli core install --url=http://127.0.0.1:8080 --title='Replica Fixture' --admin_user=replica --admin_password='fixture-admin-only' --admin_email=replica@example.invalid --skip-email
           wpcli plugin install woocommerce --version=10.0.4 --activate
@@ -84,6 +84,8 @@ jobs:
               return new WP_Error('replica_external_http_blocked', 'External HTTP is disabled in the owned CI fixture.');
           }, PHP_INT_MAX, 3);
           PHP
+          rm -f "$ENV_FILE"
+          trap - EXIT
           test ! -e "$ENV_FILE"
 
       - name: Write owned staging config
