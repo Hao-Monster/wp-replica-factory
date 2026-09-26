@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- 新增显式交互状态完整性（State Contract）与组件原资源交接（Component Resource Handoff）MVP（Issue #13）。
+- 支持状态前置条件、动作序列与后置可见性断言（包括 body Portal 挂载、二级展开项真实可见性及关闭复原断言）。
+- 细化采集身份关联：使用明确联合键（route + viewport + state_id）及唯一 `capture_id`，独立统计必须状态定义数与必须用例数（状态×视口），防止多页面/多视口交接身份混淆。
+- 增强交接报告自完整性与防伪门禁：从原始策略核验预期用例、资源目录与计数，内联 SVG 保存为独立原文件落盘校验，禁止空报告或伪造计数绕过检查。
+- 细粒度关联并校验组件各交互状态使用的原件资源（图片 currentSrc/srcset 未获取候选、CSS 背景图、原始 inline SVG），产出 `reports/component-handoff.json` 并执行本地磁盘文件与 SHA256 一致性校验。
+- 增加独立自有 fixture `tests/fixtures/state-handoff/`（地区/语言选择器）及 13 项验收测试套件 `tests/downloader/state-handoff.mjs`，接入 Downloader CI 工作流。
+
+## Unreleased
+
 - Add the independent deterministic visual evaluator for trusted baselines and candidate screenshots. Issue #3/G2 remains separate from site rebuild and production release.
 
 ## Unreleased

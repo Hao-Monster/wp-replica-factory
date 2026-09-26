@@ -101,6 +101,8 @@ export function policyFor(input) {
   if (!Array.isArray(p.publicGetFixtures)) throw new Error('publicGetFixtures must be an array');
   p.publicGetFixtures=p.publicGetFixtures.map(u=>normalizeUrl(u,p.url));
   if(p.mode==='authorized-public'&&p.publicGetFixtures.some(u=>new URL(u).protocol!=='https:'||!p.assetOrigins.includes(new URL(u).origin)))throw new Error('publicGetFixtures must be exact HTTPS URLs on approved asset origins');
+  if (p.required_states && !Array.isArray(p.required_states)) throw new Error('required_states must be an array');
+  if (Array.isArray(p.states)) for (const s of p.states) if (!s.name && s.state_id) s.name = s.state_id;
   if (!Array.isArray(p.states)||p.states.some(s=>!s.name||!Array.isArray(s.actions)||s.actions.some(a=>!['scroll','hover','click'].includes(a.type)||((a.type!=='scroll')&&!a.selector)))) throw new Error('invalid approved state operations');
   return p;
 }
