@@ -71,18 +71,22 @@ for source in sorted((run/'reports').glob('preview-*.png')):
 
 if PUBLIC_REPORT.is_file():
     public_report=json.loads(PUBLIC_REPORT.read_text(encoding='utf-8'))
-    public_run=Path(public_report['run']).resolve(strict=True)
-    public_run.relative_to((ROOT/'.replica/downloads').resolve(strict=True))
-    public_manifest=json.loads((public_run/'manifest.json').read_text(encoding='utf-8'))
-    if public_manifest.get('policy',{}).get('mode')!='authorized-public':
-        raise SystemExit('public evidence candidate is not authorized-public')
-    sensitive_keys={str(x).lower() for x in public_manifest.get('policy',{}).get('sensitiveQueryKeys',[])}
-    save_json('public-mvp-acceptance.json',public_report,sensitive_keys)
-    network=public_run/'reports/network-sanitized.json'
-    if not network.is_file():
-        raise SystemExit('sanitized public network report missing')
-    save_json('public-network-sanitized.json',json.loads(network.read_text(encoding='utf-8')),sensitive_keys)
-    copied.extend(['public-mvp-acceptance.json','public-network-sanitized.json'])
+    if public_report.get('status')=='complete' and public_report.get('run'):
+        public_run=Path(public_report['run']).resolve(strict=True)
+        public_run.relative_to((ROOT/'.replica/downloads').resolve(strict=True))
+        public_manifest=json.loads((public_run/'manifest.json').read_text(encoding='utf-8'))
+        if public_manifest.get('policy',{}).get('mode')!='authorized-public':
+            raise SystemExit('public evidence candidate is not authorized-public')
+        sensitive_keys={str(x).lower() for x in public_manifest.get('policy',{}).get('sensitiveQueryKeys',[])}
+        save_json('public-mvp-acceptance.json',public_report,sensitive_keys)
+        network=public_run/'reports/network-sanitized.json'
+        if not network.is_file():
+            raise SystemExit('sanitized public network report missing')
+        save_json('public-network-sanitized.json',json.loads(network.read_text(encoding='utf-8')),sensitive_keys)
+        copied.extend(['public-mvp-acceptance.json','public-network-sanitized.json'])
+    else:
+        save_json('public-mvp-failure.json',public_report,{'canary','token','session'})
+        copied.append('public-mvp-failure.json')
 
 save_json('artifact-allowlist.json', {'files': copied, 'excluded': ['raw', 'site', 'network', 'HAR', 'font binaries', 'browser profiles'], 'retention_days': 7})
 for file in DEST.rglob('*'):
