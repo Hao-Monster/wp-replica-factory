@@ -38,6 +38,9 @@ jobs:
         run: node tests/downloader/public-mvp.mjs
       - name: Controlled challenge classification and runtime-error isolation
         run: node tests/downloader/challenge.mjs
+      - name: Experimental Crawlee queue spike checks
+        if: hashFiles('tests/spike/crawlee-queue.test.mjs') != ''
+        run: node --test tests/spike/crawlee-queue.test.mjs
       - name: Collect only allowlisted owned evidence
         if: always()
         run: python tests/downloader/collect-ci-evidence.py

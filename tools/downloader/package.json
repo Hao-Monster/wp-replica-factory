@@ -3,17 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "node --test ../../tests/downloader/unit.test.mjs",
     "acceptance": "node ../../tests/downloader/acceptance.mjs"
   },
   "dependencies": {
-    "playwright": "1.55.0",
+    "@crawlee/core": "^3.18.1",
     "parse5": "7.3.0",
+    "playwright": "1.55.0",
     "postcss": "8.5.6",
-    "postcss-value-parser": "4.2.0",
     "postcss-safe-parser": "7.0.1",
+    "postcss-value-parser": "4.2.0",
     "srcset": "5.0.2"
   }
 }

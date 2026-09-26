@@ -68,4 +68,13 @@ https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows
 控制测试工作流中的固定 Action 提交（不声称为最新版本）
 https://github.com/actions/checkout/commit/08c6903cd8c0fde910a37f88322edcfb5dd907a8
 https://github.com/actions/setup-python/commit/e797f83bcb11b83ae66e0230d6156d7c80228e7c
+
+上游开源项目核对与选型参考（2026-09-27 核验）
+Playwright: https://github.com/microsoft/playwright (Apache-2.0)
+Crawlee: https://github.com/apify/crawlee (Apache-2.0)
+SingleFile: https://github.com/gildas-lormeau/SingleFile (AGPL-3.0-or-later)
+Browsertrix Crawler: https://github.com/webrecorder/browsertrix-crawler (AGPL-3.0-or-later)
+Browsertrix Behaviors: https://github.com/webrecorder/browsertrix-behaviors (AGPL-3.0-or-later)
+OpenDesign: https://github.com/nexu-io/open-design (MIT / Apache-2.0)
 ```
+

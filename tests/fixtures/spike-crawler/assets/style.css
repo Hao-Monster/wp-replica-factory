@@ -1,0 +1,46 @@
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f7f9fa;
+  background-image: url('/assets/bg.svg');
+  background-repeat: repeat;
+}
+
+.site-header nav a {
+  margin-right: 15px;
+  color: #0066cc;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.site-header nav a:hover {
+  text-decoration: underline;
+}
+
+.panel {
+  margin-top: 15px;
+  padding: 15px;
+  border: 1px solid #ccc;
+  background: #ffffff;
+  border-radius: 4px;
+}
+
+.secondary-panel {
+  margin-top: 10px;
+  padding: 10px;
+  border-left: 3px solid #0066cc;
+  background: #f0f4f8;
+}
+
+.lazy-load {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border: 1px solid #ddd;
+  transition: opacity 0.3s;
+}
+
+.lazy-load.loaded {
+  opacity: 1;
+}
