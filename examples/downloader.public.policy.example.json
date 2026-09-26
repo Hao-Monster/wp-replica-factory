@@ -1,0 +1,34 @@
+{
+  "mode": "authorized-public",
+  "url": "https://owned.example/",
+  "pageOrigins": [
+    "https://owned.example"
+  ],
+  "assetOrigins": [
+    "https://owned.example"
+  ],
+  "publicGetFixtures": [],
+  "maxPages": 25,
+  "maxDepth": 2,
+  "maxResources": 2000,
+  "maxBytes": 26214400,
+  "maxTotalBytes": 157286400,
+  "budgetMs": 180000,
+  "timeoutMs": 15000,
+  "maxRedirects": 10,
+  "viewports": [
+    {"width": 1440, "height": 1000},
+    {"width": 390, "height": 844}
+  ],
+  "states": [],
+  "sensitiveQueryKeys": [
+    "token",
+    "access_token",
+    "api_key",
+    "password",
+    "secret",
+    "authorization",
+    "session",
+    "cookie"
+  ]
+}

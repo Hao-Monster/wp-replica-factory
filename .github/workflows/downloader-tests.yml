@@ -34,6 +34,8 @@ jobs:
         run: node --test tests/downloader/unit.test.mjs
       - name: Real capture, source shutdown, isolated preview and negative cases
         run: node tests/downloader/acceptance.mjs
+      - name: Controlled authorized-public HTTPS, DNS and write-safety checks
+        run: node tests/downloader/public-mvp.mjs
       - name: Collect only allowlisted owned evidence
         if: always()
         run: python tests/downloader/collect-ci-evidence.py

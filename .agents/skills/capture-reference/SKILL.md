@@ -6,7 +6,7 @@ description: 采集获准的参考网页、真实图片、字体、CSS 与页面
 # Capture Reference
 下载子阶段已有可执行入口，先读 `docs/DOWNLOADER.zh-CN.md`：
 `node tools/downloader/cli.mjs download|verify|preview|compare`。
-仅 owned-fixture 模式可运行；owned fixture 已作为框架正式组成部分存在于当前 checkout，公共站模式保持 blocked。
+`owned-fixture` 与最小 `authorized-public` 模式可运行；public 模式仅用于用户明确授权、无需登录的 HTTPS，要求单一 page origin 与显式 asset origins，未知 CDN 不自动批准。
 必须检查真实文件和独立预览报告；下载 complete 不代表完整状态矩阵、视觉基准或 WooCommerce 验收通过。
 HAR 敏感，不提交或默认上传；原始响应与本地化 site 分离。
 

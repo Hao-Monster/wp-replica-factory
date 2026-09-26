@@ -75,6 +75,14 @@ export function verify(root,{requirePreview=false}={}) {
     const refs=readJSON(root,'reports/references.json');
     check(refs.schema===1&&Array.isArray(refs.references)&&Array.isArray(refs.gaps)&&refs.gaps.length===0&&Array.isArray(refs.warnings),'reference report');
     check(refs.references?.every(ref=>resources.some(r=>r.url===ref.to&&r.status==='saved')),'reference targets missing');
+    if(m.policy?.mode==='authorized-public') {
+      const network=readJSON(root,'reports/network-sanitized.json');
+      check(network.schema===1&&network.run_id===m.run_id&&network.mode==='authorized-public','sanitized network report provenance');
+      check(Array.isArray(network.events)&&Array.isArray(network.har),'sanitized network report structure');
+      const serialized=JSON.stringify(network).toLowerCase();
+      check(!serialized.includes('set-cookie')||network.sensitive_headers_removed?.includes('set-cookie'),'sanitized network header contract');
+      check(Array.isArray(network.sensitive_query_keys),'sanitized query-key contract');
+    }
     if(m.har?.enabled) {
       const data=fileHash(m.har.path,m.har.sha256),har=JSON.parse(data);
       check(m.har.session_id===m.session_id&&har.log?.version==='1.2'&&har.log.entries?.length>0&&har.log.entries.length===m.har.entries,'HAR structure/session');

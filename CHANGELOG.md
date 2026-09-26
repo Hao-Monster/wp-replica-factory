@@ -6,7 +6,7 @@
 - 新增 download/verify/preview/compare：真实浏览器响应体、三页发现、query/内容变体映射、CSS/HTML 解析改写、独立预览和原生 HAR。
 - owned fixture 已作为框架正式组成部分进入 `main`；Downloader 直接使用当前 checkout 的 fixture、required-state contract 与运行时数据，自有站双视口和断源菜单/筛选/懒加载验证不依赖外部 PR checkout。
 - 新增错误输入、损坏资源、预算、重定向、越界路径、哈希/空报告和退出码不一致等反例；保留旧 Python 门禁及其测试。
-- **需维护者审核：** 新增只读下载 CI 与采集/预览网络边界。公共网页模式仍 blocked；只上传自有 fixture 的脱敏报告和截图，保留 7 天，不上传 raw/site/HAR/字体。
+- **需维护者审核：** 扩展只读 Downloader CI，加入 controlled authorized-public HTTPS/DNS/redirect/write-safety 测试；公网 MVP 使用统一 network guard、CONNECT 前 DNS/IP 校验、`needs_approval` 与 sanitized network report。CI 仍不上传 raw/site/HAR/字体。
 - 该子阶段不完成整个 Issue #2/G1，不引入可信逐像素评估或生产发布，不自动升级已有项目。
 
 尚未实现的能力见 ROADMAP.md。不要将规划写成已完成。

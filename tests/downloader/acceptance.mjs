@@ -141,7 +141,7 @@ try {
   const linked=output('linked'),target=output('target');fs.mkdirSync(target);fs.symlinkSync(target,linked,'junction');
   const linkDenied=await cli(['download','--url',edge.origin+'/','--out',path.join(linked,'escape')]);assert.notEqual(linkDenied.code,0);assert.equal(fs.existsSync(path.join(target,'escape')),false);
   record('E-output-ownership-link-refusal',{existing_exit:denied.code,linked_exit:linkDenied.code});
-  const publicRun=await runDownload('public-blocked',edge.origin,['--mode','authorized-public']);record('E-public-isolation-blocked',negative(publicRun,['blocked']));
+  const publicInvalid=await cli(['download','--url',edge.origin+'/','--out',output('public-invalid'),'--mode','authorized-public']);assert.notEqual(publicInvalid.code,0);record('E-public-policy-requires-https-explicit-origins',{exit_code:publicInvalid.code});
   report.status='complete';report.primary_download=output('owned-1');report.repeat_download=output('owned-2');
 } catch(error) {
   report.status='failed';report.error=error.stack||error.message;console.error(report.error);process.exitCode=1;
