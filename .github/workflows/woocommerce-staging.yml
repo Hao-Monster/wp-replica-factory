@@ -69,6 +69,23 @@ jobs:
           test "$(wpcli eval 'echo wp_get_environment_type();')" = staging
           wpcli plugin install woocommerce --version=10.0.4 --activate
           wpcli option update permalink_structure '/%postname%/'
+          SHOP_ID="$(wpcli post list --post_type=page --name=shop --field=ID | head -n1)"
+          if [ -z "$SHOP_ID" ]; then
+            SHOP_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Shop --post_name=shop --porcelain)"
+          fi
+          CART_ID="$(wpcli post list --post_type=page --name=cart --field=ID | head -n1)"
+          if [ -z "$CART_ID" ]; then
+            CART_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Cart --post_name=cart --post_content='[woocommerce_cart]' --porcelain)"
+          fi
+          CHECKOUT_ID="$(wpcli post list --post_type=page --name=checkout --field=ID | head -n1)"
+          if [ -z "$CHECKOUT_ID" ]; then
+            CHECKOUT_ID="$(wpcli post create --post_type=page --post_status=publish --post_title=Checkout --post_name=checkout --post_content='[woocommerce_checkout]' --porcelain)"
+          fi
+          wpcli option update woocommerce_shop_page_id "$SHOP_ID"
+          wpcli option update woocommerce_cart_page_id "$CART_ID"
+          wpcli option update woocommerce_checkout_page_id "$CHECKOUT_ID"
+          test "$(wpcli option get woocommerce_cart_page_id)" = "$CART_ID"
+          test "$(wpcli option get woocommerce_checkout_page_id)" = "$CHECKOUT_ID"
           wpcli rewrite flush --hard
           wpcli option update replica_fixture_marker replica-fixture
           wpcli option update replica_checkout_fixture_enabled 1
