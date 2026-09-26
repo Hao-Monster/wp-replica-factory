@@ -1,0 +1,36 @@
+name: WooCommerce staging MVP
+on: {workflow_dispatch: {}, pull_request: {branches: [main]}}
+permissions: {contents: read}
+jobs:
+  staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a # v5
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+      - name: Start isolated WordPress database
+        run: docker compose -f docker-compose.woocommerce-staging.yml up -d
+      - name: Install WP CLI and WooCommerce in the isolated stack
+        run: |
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress bash -lc 'curl -sSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp && chmod +x /usr/local/bin/wp'
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp core install --url=http://127.0.0.1:8080 --title=Replica --admin_user=replica --admin_password=replica --admin_email=replica@example.invalid --skip-email --allow-root
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp plugin install woocommerce --activate --allow-root
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp option update replica_staging_marker replica-fixture --allow-root
+      - name: Build deterministic theme from owned reference bundle
+        run: |
+          python scripts/fixture_site.py seed --run-dir .replica/owned-site
+          python adapters/wordpress-staging/build.py --reference-bundle .replica/owned-site
+      - name: Upload and activate theme, seed fixture, and health check
+        run: |
+          docker cp .replica/artifacts/$(ls .replica/artifacts)/replica-theme.zip $(docker compose -f docker-compose.woocommerce-staging.yml ps -q wordpress):/tmp/replica-theme.zip
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp theme install /tmp/replica-theme.zip --activate --allow-root
+          docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress wp option get replica_staging_marker --allow-root
+          curl --fail http://127.0.0.1:8080/
+      - name: Collect safe staging evidence
+        if: always()
+        run: mkdir -p .replica/ci-staging && cp -r .replica/artifacts/* .replica/ci-staging/ || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with: {name: woocommerce-staging-evidence, path: .replica/ci-staging, if-no-files-found: ignore}
+      - if: always()
+        run: docker compose -f docker-compose.woocommerce-staging.yml down -v

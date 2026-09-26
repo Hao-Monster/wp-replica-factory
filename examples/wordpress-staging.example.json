@@ -1,0 +1,12 @@
+{
+  "environment": "staging",
+  "production": false,
+  "site_url": "http://127.0.0.1:8080",
+  "wp_path": "/var/www/html",
+  "transport": "local",
+  "ssh_host": "",
+  "ssh_user": "",
+  "theme_slug": "replica-woocommerce",
+  "fixture_prefix": "replica-fixture",
+  "staging_marker": "replica-fixture"
+}

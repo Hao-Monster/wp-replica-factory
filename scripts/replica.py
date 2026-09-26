@@ -190,6 +190,18 @@ def package_theme(theme: Path, output: Path):
             z.writestr(info,p.read_bytes())
     return {"artifact":str(output),"candidate_id":file_sha(output),"file_count":len(files),"note":"Packaging is not a security scan or deployment approval"}
 
+def init_site(output: Path, reference: Path, project_id: str):
+    need(not output.exists(), "Refusing to replace an existing site project")
+    ref=reference.resolve(); need(ref.is_dir(), "Missing reference bundle")
+    manifest=ref/"manifest.json"; need(manifest.is_file(), "Reference bundle manifest is required")
+    data=read_json(manifest); need(data.get("status")=="complete", "Reference bundle is not complete")
+    summary={"path":str(ref),"manifest_sha256":file_sha(manifest),"status":data["status"]}
+    (output/"theme").mkdir(parents=True); (output/"reference").mkdir(); (output/"reports").mkdir()
+    write_json(output/"project.json", {"schema":1,"project_id":project_id,"environment":"staging","production":False,"reference_bundle":summary,"theme_slug":"replica-woocommerce"})
+    write_json(output/"reference"/"bundle.json", summary)
+    (output/"README.md").write_text("# Replica staging site project\n\nGenerated from a validated Downloader bundle. Only metadata is stored in reference; raw/HAR/network data is never copied.\n",encoding="utf-8")
+    return summary
+
 def run_readonly(args):
     try:
         cp=subprocess.run(args,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=15,check=False)
@@ -222,9 +234,12 @@ def main():
     for arg in ("project","report"):s.add_argument("--"+arg,type=Path,required=True)
     for arg in ("candidate-id","baseline-sha","policy-sha"):s.add_argument("--"+arg,required=True)
     s=sub.add_parser("package-theme");s.add_argument("--theme-dir",type=Path,required=True);s.add_argument("--output",type=Path,required=True)
+    s=sub.add_parser("init-site");s.add_argument("--output",type=Path,required=True);s.add_argument("--reference-bundle",type=Path,required=True);s.add_argument("--project-id",required=True)
     args=p.parse_args()
     try:
-        if args.command in ("validate","doctor","init"):
+        if args.command=="init-site":
+            result=init_site(args.output,args.reference_bundle,args.project_id)
+        elif args.command in ("validate","doctor","init"):
             cfg=validate(read_json(args.project))
             if args.command=="validate":
                 result={"valid":True,"policy_sha256":digest(cfg),"visual_cases":len(expected_visuals(cfg))}

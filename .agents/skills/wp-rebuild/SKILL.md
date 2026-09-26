@@ -1,4 +1,3 @@
----
 name: wp-rebuild
 description: 将已冻结的页面规格实现为可运行的 WordPress 与 WooCommerce 定制主题及必要插件，不生成脱离后端的假商城。
 ---
@@ -13,3 +12,13 @@ description: 将已冻结的页面规格实现为可运行的 WordPress 与 WooC
 对比用固定 fixture 数据；自己的真实商品不同于参考站时，分离“参考复现验收”和“真实商品接入验收”，不宣称两者截图完全相等。
 不改核心文件，不在线编辑生产，不覆盖数据库、uploads、客户、订单、密钥或生产配置。
 每次生成候选后交给独立测试，不能自己把缺少的断言补成 pass。
+
+## Staging MVP boundary
+
+When a validated Downloader reference bundle is available, build only through the
+WP-CLI staging adapter (`adapters/wordpress-staging`). Treat the bundle as read-only
+evidence: use manifest/routes/resources/pages/site and never copy raw HAR, cookies,
+authorization headers, or business APIs into a theme. The adapter requires an explicit
+staging marker and `production=false` before every write. Use the generic WooCommerce
+theme scaffold and isolated fixture products for pilot smoke; production release,
+visual evaluation and unrelated host adapters remain out of scope.

@@ -42,3 +42,6 @@
 - Added real lazy-background response, decode, applied-style, and controlled negative browser checks.
 - Restricted fixture health checks to explicit local HTTP origins and rejected redirects before following them.
 - Added structured acceptance failure evidence with always-run CI artifact upload while preserving test exit codes.
+## Unreleased
+
+- Add FAST-TRACK WooCommerce staging MVP foundation with a guarded WP-CLI adapter, generic theme scaffold, reference bundle validation, site project initialization, and isolated CI compose workflow. This does not complete Issue #4/G3.

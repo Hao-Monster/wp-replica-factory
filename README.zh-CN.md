@@ -10,6 +10,8 @@
 
 ## 已实现
 
+- WooCommerce staging MVP：通用主题 scaffold、只读 Downloader reference bundle 接口、WP-CLI staging adapter、隔离 Compose CI 验收与 rollback/cleanup 契约。Issue #4/G3 的独立 visual evaluator 仍未实现。
+
 - 可选下载器 v0.1：单入口多页真实采集、资源落盘/本地化、独立预览与验证。支持 owned loopback fixture 与最小 authorized-public HTTPS 模式；公网模式要求用户明确授权、单一 page origin、显式 asset origins，并拒绝登录/challenge 与业务写请求。owned fixture 已正式存在于 `main`，Downloader 测试直接使用当前 checkout 的 `scripts/fixture_site.py`、RESOURCE_MANIFEST 与 STATE_MATRIX，不再依赖外部 PR checkout。安装、实际入口、固定验收和限制见 `docs/DOWNLOADER.zh-CN.md`。这不表示下列完整平台建设已完成。
 
 - `.agents/skills/` 中一个编排 Skill、三个专项 Skill，以及 AGENTS.md。

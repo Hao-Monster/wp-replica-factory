@@ -6,6 +6,13 @@
 
 本文件定义平台建设目标，不表示这些 adapter 已经存在。
 
+## 2a. WooCommerce staging MVP
+
+`adapters/wordpress-staging/` 是本轮唯一实现的运行时 adapter。它只调用 WP-CLI，
+写操作前要求 staging marker、非 production WordPress、`environment=staging` 和
+`production=false`。主题制品只能覆盖主题目录；数据库、uploads、订单和插件不由
+deploy 覆盖。`build.py` 只读取已验证 Downloader bundle 的脱敏元数据并输出确定性主题 ZIP。
+
 ## 1. Source adapter
 
 输入：批准的 origins、routes/states/regions、runtime、授权素材范围、固定 fixture 和采集预算。
