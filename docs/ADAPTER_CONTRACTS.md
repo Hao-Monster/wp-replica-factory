@@ -90,3 +90,29 @@ Agent 输出：补丁/候选提交与说明，不输出最终判定。
 凭据存在发布环境，不存在编写主题的 Agent 环境。注意 PHP 主题本身具备服务器代码执行能力，生产 PHP 变更仍需审阅。
 远端回传真实版本标识、制品摘要、健康结果、previous_release。适配器提供 rollback(previous_release)。
 代码回滚不等于数据库无损回滚；数据迁移需采用兼容式或另行批准方案。
+
+
+## 6. WordPress staging runtime contract
+
+Staging config separates transport (`local|ssh`) from runtime
+(`host-wpcli|docker-compose-wordpress`). Compose runtime uses a stable service
+name and resolves a container dynamically with `docker compose ps -q <service>`.
+`run_wp_cli(args)` hides host/container/ephemeral execution. If the service has
+no WP-CLI, the adapter launches the official `wordpress:cli` with shared
+WordPress volumes/network and a 0600 temporary env file containing only the
+required `WORDPRESS_DB_*` values.
+
+All mutating commands call the real target WordPress
+`wp_get_environment_type()`. Configuration or hostname naming is not a write
+authorization. Gates are split by side effect so theme deployment can pass
+without payment/order/mail/webhook capabilities.
+
+Theme artifacts are `theme.zip + manifest.json`; SHA256 is recomputed before
+deploy. The target theme is staged as `<slug>.next`, linted, swapped with a
+single `<slug>.previous`, verified through WordPress version reads and Web
+health, and rolled back on version/health failure. No database, order, uploads,
+or plugin rollback is implied.
+
+Candidate Capture accepts only owned-staging policy, emits the Visual Evaluator
+Candidate manifest, and can hand off directly to evaluator `evaluate` and
+`verify-report`. Baseline approval remains outside this adapter.

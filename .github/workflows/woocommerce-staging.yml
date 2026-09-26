@@ -1,0 +1,205 @@
+name: WooCommerce staging core
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: woocommerce-staging-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.12.0'
+
+      - name: Run staging contract unit tests
+        run: python3 -m unittest tests.test_wordpress_staging -v
+
+      - name: Install controlled browser dependency
+        run: |
+          npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
+          node tools/downloader/node_modules/playwright/cli.js install chromium
+
+      - name: Start isolated WordPress and MariaDB
+        run: |
+          rm -rf .replica/ci-wp
+          mkdir -p .replica/ci-evidence
+          docker compose -f docker-compose.woocommerce-staging.yml up -d
+
+      - name: Bootstrap fixture through ephemeral wordpress:cli
+        run: |
+          set -euo pipefail
+          ENV_FILE="$(mktemp)"
+          chmod 600 "$ENV_FILE"
+          trap 'rm -f "$ENV_FILE"' EXIT
+          cat >"$ENV_FILE" <<'EOF'
+          WORDPRESS_DB_HOST=db:3306
+          WORDPRESS_DB_USER=wordpress
+          WORDPRESS_DB_PASSWORD=fixture-only
+          WORDPRESS_DB_NAME=wordpress
+          EOF
+          for i in $(seq 1 60); do
+            docker compose -f docker-compose.woocommerce-staging.yml exec -T wordpress test -f /var/www/html/wp-includes/version.php && break
+            test "$i" -lt 60 || exit 1
+            sleep 2
+          done
+          CID="$(docker compose -f docker-compose.woocommerce-staging.yml ps -q wordpress)"
+          test -n "$CID"
+          NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "$CID" | head -n1)"
+          test -n "$NET"
+          wpcli() {
+            docker run --rm --network "$NET" --volumes-from "$CID" -w /var/www/html --env-file "$ENV_FILE" wordpress:cli "$@" --path=/var/www/html --allow-root
+          }
+          wpcli core install --url=http://127.0.0.1:8080 --title='Replica Fixture' --admin_user=replica --admin_password='fixture-admin-only' --admin_email=replica@example.invalid --skip-email
+          wpcli plugin install woocommerce --version=10.0.4 --activate
+          wpcli option update permalink_structure '/%postname%/'
+          wpcli rewrite flush --hard
+          wpcli option update replica_fixture_marker replica-fixture
+          wpcli option update replica_checkout_fixture_enabled 1
+          wpcli option update replica_real_payment_disabled 1
+          wpcli option update replica_mail_disabled 1
+          wpcli option update replica_external_inventory_sync_disabled 1
+          mkdir -p .replica/ci-wp/wp-content/mu-plugins
+          cat >.replica/ci-wp/wp-content/mu-plugins/replica-fixture-safety.php <<'PHP'
+          <?php
+          add_filter('pre_wp_mail', '__return_true', PHP_INT_MAX);
+          add_filter('woocommerce_available_payment_gateways', '__return_empty_array', PHP_INT_MAX);
+          add_filter('pre_http_request', function ($pre, $args, $url) {
+              $host = wp_parse_url($url, PHP_URL_HOST);
+              if (in_array($host, ['127.0.0.1', 'localhost'], true)) {
+                  return $pre;
+              }
+              return new WP_Error('replica_external_http_blocked', 'External HTTP is disabled in the owned CI fixture.');
+          }, PHP_INT_MAX, 3);
+          PHP
+          test ! -e "$ENV_FILE"
+
+      - name: Write owned staging config
+        run: |
+          python3 - <<'PY'
+          import json, os
+          root=os.environ["GITHUB_WORKSPACE"]
+          cfg={
+            "environment":"staging","production":False,
+            "siteUrl":"http://127.0.0.1:8080","transport":"local",
+            "runtime":{
+              "type":"docker-compose-wordpress","composePath":root,
+              "composeFile":"docker-compose.woocommerce-staging.yml",
+              "service":"wordpress","hostWpPath":os.path.join(root,".replica","ci-wp"),
+              "containerWpPath":"/var/www/html"
+            },
+            "policy":{"allowDevelopment":False,"activate":True},
+            "themeSlug":"replica-woocommerce","fixtureMarker":"replica-fixture",
+            "healthPaths":["/","/shop/"],
+            "healthReportPath":os.path.join(root,".replica","ci-evidence","staging-health.json")
+          }
+          with open(".replica/staging.json","w",encoding="utf-8") as f: json.dump(cfg,f,indent=2)
+          PY
+
+      - name: Exercise ephemeral CLI gates and first deploy
+        run: |
+          set -euo pipefail
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json doctor | tee .replica/ci-evidence/doctor.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json gates | tee .replica/ci-evidence/gates.json
+          python3 adapters/wordpress-staging/build.py --reference-status owned --out .replica/artifacts/v1
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json deploy --artifact .replica/artifacts/v1/theme.zip --manifest .replica/artifacts/v1/manifest.json | tee .replica/ci-evidence/deploy-v1.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json seed --fixture | tee .replica/ci-evidence/seed.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json order-test --fixture | tee .replica/ci-evidence/order.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json health | tee .replica/ci-evidence/health.json
+
+      - name: Exercise update, version verification, and rollback
+        run: |
+          set -euo pipefail
+          cp -a templates/woocommerce-theme .replica/theme-v2
+          sed -i 's/Version: 1.0.0/Version: 1.0.1/' .replica/theme-v2/style.css
+          python3 adapters/wordpress-staging/build.py --theme-dir .replica/theme-v2 --reference-status owned --out .replica/artifacts/v2
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json deploy --artifact .replica/artifacts/v2/theme.zip --manifest .replica/artifacts/v2/manifest.json | tee .replica/ci-evidence/deploy-v2.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json version | tee .replica/ci-evidence/version-v2.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json rollback | tee .replica/ci-evidence/rollback.json
+          python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json version | tee .replica/ci-evidence/version-after-rollback.json
+          python3 - <<'PY'
+          import json
+          v=json.load(open(".replica/ci-evidence/version-after-rollback.json"))
+          assert v["target_version"]=="1.0.0", v
+          assert v["active_theme"]=="replica-woocommerce", v
+          PY
+
+      - name: Capture owned candidate and hand off to trusted evaluator
+        run: |
+          set -euo pipefail
+          cat >.replica/capture-policy.json <<'JSON'
+          {
+            "authorization":"owned-staging",
+            "previewUrl":"http://127.0.0.1:8080",
+            "routes":[
+              {"page":"home","route":"/","states":["default","menu-open"]},
+              {"page":"category","route":"/product-category/replica-fixture/","states":["default"]},
+              {"page":"product","route":"/product/replica-fixture-001/","states":["default"]},
+              {"page":"cart","route":"/cart/","states":["default","cart-nonempty"]},
+              {"page":"checkout","route":"/checkout/","states":["default"]}
+            ],
+            "viewports":[
+              {"id":"desktop","width":1440,"height":1000},
+              {"id":"mobile","width":390,"height":844}
+            ],
+            "ownedSelectors":{
+              "menuToggle":"[data-replica-menu-toggle]",
+              "addFixture":"[data-replica-add-fixture]"
+            }
+          }
+          JSON
+          node tools/candidate-capture/cli.mjs capture --policy .replica/capture-policy.json --out .replica/candidate | tee .replica/ci-evidence/candidate.json
+          cp -a .replica/candidate .replica/baseline
+          python3 - <<'PY'
+          import json
+          p=".replica/baseline/manifest.json"
+          m=json.load(open(p)); m["baseline_set_id"]="owned-ci-baseline"
+          with open(p,"w") as f: json.dump(m,f,indent=2)
+          c=json.load(open(".replica/candidate/manifest.json"))
+          vp={"pixel":{"maxDifferentRatio":0,"maxMeanAbsoluteError":0},"maxCandidateAgeMinutes":30,
+              "requiredStates":[{"page":x["page"],"viewport":x["viewport"],"state":x["state"]} for x in c["screenshots"]],
+              "regions":[],"failOnMissingImages":True}
+          with open(".replica/visual-policy.json","w") as f: json.dump(vp,f)
+          PY
+          node tools/visual-evaluator/cli.mjs evaluate --baseline .replica/baseline --candidate .replica/candidate --policy .replica/visual-policy.json --out .replica/visual | tee .replica/ci-evidence/visual-evaluate.json
+          node tools/visual-evaluator/cli.mjs verify-report .replica/visual | tee .replica/ci-evidence/visual-verify.json
+
+      - name: Run candidate and evaluator integration negatives
+        run: |
+          node tests/candidate-capture.mjs
+          node tests/visual-evaluator.mjs
+
+      - name: Cleanup owned fixture data
+        run: python3 adapters/wordpress-staging/adapter.py --config .replica/staging.json cleanup --fixture | tee .replica/ci-evidence/cleanup.json
+
+      - name: Repository file gate
+        run: python3 scripts/check_repo_files.py
+
+      - name: Upload controlled staging evidence
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: woocommerce-staging-core-evidence
+          path: |
+            .replica/ci-evidence
+            .replica/candidate/manifest.json
+            .replica/candidate/screenshots
+            .replica/visual/reports
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop isolated stack
+        if: always()
+        run: docker compose -f docker-compose.woocommerce-staging.yml down -v

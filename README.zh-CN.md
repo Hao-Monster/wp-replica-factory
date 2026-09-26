@@ -92,3 +92,16 @@ gate 用法与报告契约见 docs/ADAPTER_CONTRACTS.md。
 不要把控制层测试通过当成像素级重建通过。
 
 官方资料见 docs/SOURCES.md；架构与阈值设计为本包的建议，不是工具官方承诺。
+
+
+## G3 staging core（PR 阶段）
+
+当前框架分支增加可复用 WordPress/WooCommerce staging core：SSH/本地 transport、
+`host-wpcli` 与 `docker-compose-wordpress` runtime、临时官方 `wordpress:cli`、
+真实 WordPress environment guard、主题制品/版本/health/rollback，以及 owned staging
+Candidate Capture → trusted Visual Evaluator handoff。主题 deploy 与 fixture seed/order
+side effects 使用独立 gate。详细契约见 `docs/WORDPRESS_STAGING.zh-CN.md` 与
+`docs/VISUAL_REPAIR_HANDOFF.zh-CN.md`。
+
+这是 `G3_CORE_READY` 的候选实现，不表示完整 G3、Issue #4 或生产发布已完成；G4/G5/G6
+仍不在本轮范围。
