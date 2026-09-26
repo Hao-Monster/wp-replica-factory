@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import { SCHEMA, sha, safeFile, noLinks, readJSON, coreDigest, bodyProblem } from './core.mjs';
+import { verifyStateHandoff } from './state-handoff.mjs';
 
-export function verify(root,{requirePreview=false}={}) {
+export function verify(root,{requirePreview=false,requireHandoff=false}={}) {
   const errors=[];
   const check=(condition,message)=>{if(!condition)errors.push(message);};
   try {
@@ -46,6 +47,13 @@ export function verify(root,{requirePreview=false}={}) {
       for(const v of m.policy.viewports) {
         const states=['default',...m.policy.states.filter(s=>!s.path||s.path===new URL(r.url).pathname).map(s=>s.name)];
         for(const state of states)check(m.captures.some(c=>c.url===r.url&&c.viewport.width===v.width&&c.viewport.height===v.height&&c.state===state),'missing route/viewport/state evidence');
+      }
+    }
+    if (Array.isArray(m.policy?.required_states) && m.policy.required_states.length > 0) {
+      for (const req of m.policy.required_states) {
+        for (const v of m.policy.viewports) {
+          check(m.captures.some(c => c.viewport.width === v.width && c.viewport.height === v.height && c.state === req), `missing required state ${req} for viewport ${v.width}x${v.height}`);
+        }
       }
     }
     for(const c of m.captures) {
@@ -107,6 +115,10 @@ export function verify(root,{requirePreview=false}={}) {
       }
       check(p.requests?.every(r=>r.method==='GET'&&new URL(r.url).origin===p.origin),'preview outbound request');
       check(p.checks?.every(c=>c.assertions.every(a=>a.passed===true&&a.actual&&a.expected)),'preview failed assertion');
+    }
+    const handoffCheck = verifyStateHandoff(root, { requireHandoff: Boolean(requireHandoff || m.policy?.required_states) });
+    if (handoffCheck.status === 'failed') {
+      for (const err of handoffCheck.errors || []) check(false, `handoff: ${err}`);
     }
   } catch(error) {errors.push(error.message);}
   return {schema:1,status:errors.length?'failed':'complete',errors};
