@@ -226,5 +226,11 @@ class ControlledWorkflowContractTests(unittest.TestCase):
         self.assertIn('wpcli option update woocommerce_cart_page_id "$CART_ID"',workflow)
         self.assertIn('wpcli option update woocommerce_checkout_page_id "$CHECKOUT_ID"',workflow)
 
+    def test_cleanup_workflow_uses_behavioral_verifier_before_and_after_cleanup(self):
+        workflow=(ROOT/".github/workflows/woocommerce-staging.yml").read_text(encoding="utf-8")
+        self.assertIn("cleanup-verification-before.json", workflow)
+        self.assertIn("scripts/verify_fixture_cleanup.py verify", workflow)
+        self.assertIn("cleanup-ownership-before.json", workflow)
+
 if __name__=="__main__":
     unittest.main()
