@@ -10,6 +10,8 @@
 
 ## 已实现
 
+- 可选下载器 v0.1：单入口多页真实采集、资源落盘/本地化、独立预览与验证。范围限定自有精确 loopback fixture；公共网页模式 blocked。owned fixture 已正式存在于 `main`，Downloader 测试直接使用当前 checkout 的 `scripts/fixture_site.py`、RESOURCE_MANIFEST 与 STATE_MATRIX，不再依赖外部 PR checkout。安装、实际入口、固定验收和限制见 `docs/DOWNLOADER.zh-CN.md`。这不表示下列完整平台建设已完成。
+
 - `.agents/skills/` 中一个编排 Skill、三个专项 Skill，以及 AGENTS.md。
 - Python 标准库控制脚本：配置验证、工具/可选认证检查、检查点初始化、基准文件哈希封存与验证。
 - 严格报告门禁：绑定候选制品、基准和策略摘要，拒绝缺失/重复截图、像素差异、缺图、缺字体、跳过用例、功能失败及旧报告。

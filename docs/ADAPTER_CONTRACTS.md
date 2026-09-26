@@ -1,5 +1,9 @@
 # Adapter contracts — 接口设计，尚待实现
 
+下载子阶段 v0.1 已有单独契约与入口：`docs/DOWNLOADER.zh-CN.md`。
+其 manifest/routes/resources、raw/pages/site、下载/预览报告及可选 HAR 不等同于
+下述完整 baseline bundle，不能直接视为冻结基准或可信视觉报告；旧 gate 契约不变。
+
 本文件定义平台建设目标，不表示这些 adapter 已经存在。
 
 ## 1. Source adapter

@@ -1,0 +1,47 @@
+name: Downloader v0.1 checks
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: downloader-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  owned-downloader:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.replica/browsers
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.12.0'
+      - name: Install locked project dependencies and Chromium build
+        run: |
+          npm ci --prefix tools/downloader --ignore-scripts --no-audit --no-fund
+          node tools/downloader/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Downloader unit checks
+        run: node --test tests/downloader/unit.test.mjs
+      - name: Real capture, source shutdown, isolated preview and negative cases
+        run: node tests/downloader/acceptance.mjs
+      - name: Collect only allowlisted owned evidence
+        if: always()
+        run: python tests/downloader/collect-ci-evidence.py
+      - name: Upload sanitized reports and screenshots (no raw, site, fonts or HAR)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: downloader-owned-evidence-${{ github.run_attempt }}
+          path: .replica/ci-evidence/
+          if-no-files-found: error
+          retention-days: 7
