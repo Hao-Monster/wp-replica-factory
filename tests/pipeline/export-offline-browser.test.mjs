@@ -23,10 +23,19 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import pkg from '../../tools/downloader/node_modules/playwright/index.js';
 const { chromium } = pkg;
+import { buildAndExport } from '../../tools/pipeline/build-preview.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '../..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist-preview');
+
+test.before(async () => {
+  const p = path.join(DIST_DIR, 'preview-manifest.json');
+  if (!fs.existsSync(p)) {
+    console.log('[export-offline-browser.test] preview-manifest.json missing in dist-preview, building now...');
+    await buildAndExport({ outputDir: 'dist-preview' });
+  }
+});
 
 const MIME_MAP = {
   '.html': 'text/html; charset=utf-8',

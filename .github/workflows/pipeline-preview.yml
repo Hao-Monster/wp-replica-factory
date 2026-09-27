@@ -107,6 +107,9 @@ jobs:
       - name: Verify CLI --help
         run: node tools/pipeline/cli.mjs --help
 
+      - name: Build pipeline preview for acceptance tests
+        run: node tools/pipeline/build-preview.mjs --output dist-preview --sha ${{ github.sha }} --run-id ${{ github.run_id }}
+
       - name: Pipeline test suite (U1-U3, P1-P7, N1-N8, G1-G2)
         run: node --test tests/pipeline/pipeline.test.mjs
         timeout-minutes: 8
