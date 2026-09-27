@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline Fixture – Home</title>
+  <link rel="stylesheet" href="/assets/pipeline.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a id="nav-home" href="/">Home</a>
+      <a id="nav-catalog" href="/catalog.html">Catalog</a>
+      <a id="nav-about" href="/about.html">About Us</a>
+      <!-- Country selector trigger – opens a body-mounted Portal -->
+      <button id="country-trigger-btn" type="button" aria-expanded="false" aria-haspopup="dialog">
+        🌏 AU
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Pipeline Test Home</h1>
+      <p>Reference pipeline MVP fixture. Supports multi-page, portal, query and lazy-asset tests.</p>
+      <!-- Inline SVG for region icon (must be captured as inline-svg type) -->
+      <span id="hero-inline-svg" class="icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" fill="#2563eb"/>
+        </svg>
+      </span>
+    </section>
+
+    <!-- Lazy-loaded home image -->
+    <section class="lazy-section">
+      <img id="home-lazy-img"
+           class="lazy-load"
+           src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23eee'/%3E%3C/svg%3E"
+           data-src="/assets/product-thumb.svg"
+           alt="Lazy product thumbnail" />
+    </section>
+
+    <!-- Link that only appears after country selection – tests post-interaction discovery -->
+    <div id="country-specific-links" style="display:none;">
+      <a id="link-nz" href="/about.html?region=nz">NZ About Page</a>
+    </div>
+  </main>
+
+  <!-- Body-mounted Portal for country selector (body child, not nested in nav) -->
+  <div id="country-portal" role="dialog" aria-modal="true" aria-label="Country Selector"
+       style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999;">
+    <div class="portal-backdrop"></div>
+    <div class="portal-content">
+      <h2 class="portal-title">Select Your Country</h2>
+      <!-- Flag image captured as image resource -->
+      <img id="portal-flag-img" src="/assets/flag-au.svg" alt="Australia flag" class="flag-img">
+      <!-- CSS background tested via .portal-content rule in pipeline.css -->
+      <div class="portal-header dialog-header">
+        <!-- Inline SVG close button -->
+        <button id="country-close-btn" type="button" class="close-icon" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+            <path d="M14.348 14.849l-4.348-4.348-4.349 4.349-1.414-1.414 4.349-4.349-4.349-4.348 1.414-1.414 4.349 4.348 4.348-4.348 1.414 1.414-4.348 4.348 4.348 4.349z" fill="#333"/>
+          </svg>
+        </button>
+      </div>
+      <ul id="country-list">
+        <li><button class="country-item" data-country="au">🇦🇺 Australia</button></li>
+        <li><button class="country-item" data-country="nz">🇳🇿 New Zealand</button></li>
+        <li><button class="country-item" data-country="sg">🇸🇬 Singapore</button></li>
+      </ul>
+      <!-- Language expand (second-level interactive) -->
+      <button id="lang-expand-btn" type="button" aria-expanded="false" aria-controls="lang-panel">
+        Language Options
+      </button>
+      <ul id="lang-panel" style="display:none;">
+        <li class="lang-item">English</li>
+        <li class="lang-item">中文</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="/assets/pipeline.js"></script>
+  <script>
+    // Lazy loading
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const img = document.getElementById('home-lazy-img');
+        if (img && img.dataset.src) {
+          img.src = img.dataset.src;
+          img.classList.add('loaded');
+        }
+      }, 60);
+    });
+
+    // Country trigger opens body-mounted portal
+    const trigger = document.getElementById('country-trigger-btn');
+    const portal = document.getElementById('country-portal');
+    const closeBtn = document.getElementById('country-close-btn');
+    const langBtn = document.getElementById('lang-expand-btn');
+    const langPanel = document.getElementById('lang-panel');
+    const specificLinks = document.getElementById('country-specific-links');
+
+    trigger.addEventListener('click', () => {
+      portal.style.display = 'block';
+      trigger.setAttribute('aria-expanded', 'true');
+    });
+
+    closeBtn.addEventListener('click', () => {
+      portal.style.display = 'none';
+      trigger.setAttribute('aria-expanded', 'false');
+    });
+
+    langBtn.addEventListener('click', () => {
+      const isHidden = langPanel.style.display === 'none';
+      langPanel.style.display = isHidden ? 'block' : 'none';
+      langBtn.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    // Country selection shows region-specific link (post-interaction discovery test)
+    document.querySelectorAll('.country-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        specificLinks.style.display = 'block';
+        portal.style.display = 'none';
+        trigger.setAttribute('aria-expanded', 'false');
+      });
+    });
+  </script>
+</body>
+</html>

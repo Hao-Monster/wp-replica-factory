@@ -1,0 +1,150 @@
+{
+  "_comment": "Pipeline fixture contract v0.1 — written BEFORE capture. Expected values are independent of actual run output.",
+  "schema": 1,
+  "contractVersion": "v1",
+  "configVer": "v1",
+
+  "seed": "<<REPLACED_AT_RUNTIME_WITH_SERVER_ORIGIN>>/",
+  "pageOrigins": ["<<REPLACED_AT_RUNTIME_WITH_SERVER_ORIGIN>>"],
+  "assetOrigins": ["<<REPLACED_AT_RUNTIME_WITH_SERVER_ORIGIN>>"],
+
+  "viewports": [
+    { "width": 1440, "height": 1000 },
+    { "width": 390, "height": 844 }
+  ],
+
+  "required_pages": [
+    "/",
+    "/catalog.html",
+    "/about.html",
+    "/catalog.html?sale=1"
+  ],
+
+  "required_states": [
+    "country-closed",
+    "country-open",
+    "lang-expanded",
+    "country-closed-again",
+    "filter-open",
+    "secondary-expanded"
+  ],
+
+  "states": [
+    {
+      "state_id": "country-closed",
+      "name": "country-closed",
+      "path": "/",
+      "preconditions": [],
+      "actions": [],
+      "assertions": [
+        { "selector": "#country-trigger-btn", "visible": true },
+        { "selector": "#country-portal", "visible": false }
+      ]
+    },
+    {
+      "state_id": "country-open",
+      "name": "country-open",
+      "path": "/",
+      "preconditions": [
+        { "selector": "#country-portal", "visible": false }
+      ],
+      "actions": [
+        { "type": "click", "selector": "#country-trigger-btn" }
+      ],
+      "assertions": [
+        { "selector": "#country-portal", "visible": true },
+        { "selector": "#country-list", "visible": true },
+        { "selector": ".flag-img", "visible": true }
+      ],
+      "required_resources": [
+        { "type": "image", "selector": ".flag-img" },
+        { "type": "css-background", "selector": ".dialog-header" },
+        { "type": "inline-svg", "selector": ".close-icon" }
+      ]
+    },
+    {
+      "state_id": "lang-expanded",
+      "name": "lang-expanded",
+      "path": "/",
+      "preconditions": [
+        { "selector": "#country-portal", "visible": false }
+      ],
+      "actions": [
+        { "type": "click", "selector": "#country-trigger-btn" },
+        { "type": "click", "selector": "#lang-expand-btn" }
+      ],
+      "assertions": [
+        { "selector": "#country-portal", "visible": true },
+        { "selector": "#lang-panel", "visible": true },
+        { "selector": ".lang-item", "visible": true, "min_count": 2 }
+      ],
+      "required_resources": [
+        { "type": "image", "selector": ".flag-img" },
+        { "type": "css-background", "selector": ".dialog-header" },
+        { "type": "inline-svg", "selector": ".close-icon" }
+      ]
+    },
+    {
+      "state_id": "country-closed-again",
+      "name": "country-closed-again",
+      "path": "/",
+      "preconditions": [
+        { "selector": "#country-portal", "visible": false }
+      ],
+      "actions": [
+        { "type": "click", "selector": "#country-trigger-btn" },
+        { "type": "click", "selector": "#country-close-btn" }
+      ],
+      "assertions": [
+        { "selector": "#country-portal", "visible": false },
+        { "selector": "#country-trigger-btn", "visible": true }
+      ],
+      "restores_state": "country-closed"
+    },
+    {
+      "state_id": "filter-open",
+      "name": "filter-open",
+      "path": "/catalog.html",
+      "preconditions": [
+        { "selector": "#filter-panel", "visible": false }
+      ],
+      "actions": [
+        { "type": "click", "selector": "#filter-btn" }
+      ],
+      "assertions": [
+        { "selector": "#filter-panel", "visible": true },
+        { "selector": "#expand-category-btn", "visible": true }
+      ]
+    },
+    {
+      "state_id": "secondary-expanded",
+      "name": "secondary-expanded",
+      "path": "/catalog.html",
+      "preconditions": [
+        { "selector": "#filter-panel", "visible": false }
+      ],
+      "actions": [
+        { "type": "click", "selector": "#filter-btn" },
+        { "type": "click", "selector": "#expand-category-btn" }
+      ],
+      "assertions": [
+        { "selector": "#filter-panel", "visible": true },
+        { "selector": "#category-panel", "visible": true }
+      ]
+    }
+  ],
+
+  "require_interactions_confirmed": false,
+  "interactions_pending": [],
+
+  "approval": null,
+
+  "expected_counts": {
+    "_comment": "These are independent pre-declared expectations. Must match actual output for TECH_VERIFIED.",
+    "pages": 4,
+    "states_per_page_home": 4,
+    "states_per_page_catalog": 2,
+    "viewports": 2,
+    "required_resources_home_state_open": ["image:flag-au.svg", "css-background:dialog-bg.svg", "inline-svg:close-icon"]
+  }
+}
