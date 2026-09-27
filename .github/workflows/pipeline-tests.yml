@@ -47,6 +47,10 @@ jobs:
       - name: Evidence adapter verification tests (V1-V4)
         run: node --test tests/pipeline/adapt-evidence.test.mjs
 
+      - name: Offline export browser acceptance tests (E1-E10)
+        run: node --test tests/pipeline/export-offline-browser.test.mjs
+        timeout-minutes: 5
+
       - name: Collect pipeline evidence (sanitized)
         if: always()
         run: python tests/pipeline/collect-pipeline-evidence.py
