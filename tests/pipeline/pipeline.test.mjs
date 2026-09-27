@@ -281,6 +281,15 @@ test('P1 + P2 + P4: Pipeline run discovers pages, captures states, saves resourc
   assert.equal(index.schema, 1);
   assert.ok(Object.keys(index.pages).length > 0, 'Index should have entries');
 
+  // Preserve sanitized pipeline run artifacts for CI quality evidence collection
+  const evidencePipelineDir = path.resolve(__dirname, '../../.replica/pipeline-ci-evidence/pipeline-run');
+  fs.mkdirSync(evidencePipelineDir, { recursive: true });
+  fs.copyFileSync(result.referenceIndexPath, path.join(evidencePipelineDir, 'reference-index.json'));
+  const cpFile = checkpointPath(outputDir, result.runId);
+  if (fs.existsSync(cpFile)) {
+    fs.copyFileSync(cpFile, path.join(evidencePipelineDir, '_pipeline_checkpoint.json'));
+  }
+
   // Captures have valid artifact references.
   // Pipeline accepts 'partial' when all failures are dependency_gap or font_load
   // (links to other pages are managed by the queue, not captured in one batch).

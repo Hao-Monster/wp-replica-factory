@@ -114,7 +114,7 @@ jobs:
         run: node --test tests/pipeline/pipeline.test.mjs
         timeout-minutes: 8
 
-      - name: Offline export browser acceptance tests (E1-E9)
+      - name: Offline export browser acceptance tests (E1-E10)
         run: node --test tests/pipeline/export-offline-browser.test.mjs
         timeout-minutes: 5
 

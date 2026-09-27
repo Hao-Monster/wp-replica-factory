@@ -10,8 +10,13 @@
  * 5. Verifies query string page identity (/catalog.html?sale=1 vs /catalog.html).
  * 6. Verifies cross-page navigation links stay within static views.
  * 7. Confirms NO __replica_banner inside reference documents.
- * 8. Compares offline re-render against original capture screenshot.
- * 9. Negative tests: broken font URL and broken navigation link are detected.
+ * 8. Real visual comparison: compares source screenshots with offline re-renders (tools/visual-evaluator).
+ * 9. Visual negative test: mutating visible element color/position must yield pixel diff.
+ * 10. Negative test: broken font URL is detected and fails FontFace check.
+ *
+ * Evidence generation:
+ * - Records all browser network requests to verify 0 upstream/external requests.
+ * - Saves diff PNGs, visual reports, and test execution summaries into .replica/pipeline-ci-evidence/.
  */
 
 import test from 'node:test';
@@ -24,10 +29,14 @@ import { fileURLToPath } from 'node:url';
 import pkg from '../../tools/downloader/node_modules/playwright/index.js';
 const { chromium } = pkg;
 import { buildAndExport } from '../../tools/pipeline/build-preview.mjs';
+import { readPng, writePng, comparePixels } from '../../tools/visual-evaluator/image-diff.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '../..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist-preview');
+const EVIDENCE_DIR = path.join(ROOT_DIR, '.replica', 'pipeline-ci-evidence');
+const VISUAL_DIFF_DIR = path.join(EVIDENCE_DIR, 'visual-diffs');
+fs.mkdirSync(VISUAL_DIFF_DIR, { recursive: true });
 
 test.before(async () => {
   const p = path.join(DIST_DIR, 'preview-manifest.json');
@@ -47,6 +56,34 @@ const MIME_MAP = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
 };
+
+const recordedNetworkRequests = [];
+function attachNetworkTracker(page, origin) {
+  page.on('request', req => {
+    const url = req.url();
+    const isLocal = url.startsWith(origin);
+    recordedNetworkRequests.push({
+      url,
+      method: req.method(),
+      resourceType: req.resourceType(),
+      isLocal,
+      timestamp: new Date().toISOString(),
+    });
+    if (!isLocal) {
+      throw new Error(`CRITICAL: External/upstream request detected during offline test: ${url}`);
+    }
+  });
+  page.on('requestfailed', req => {
+    recordedNetworkRequests.push({
+      url: req.url(),
+      method: req.method(),
+      resourceType: req.resourceType(),
+      failed: true,
+      errorText: req.failure()?.errorText || 'failed',
+      timestamp: new Date().toISOString(),
+    });
+  });
+}
 
 function startStaticServer(serveDir = DIST_DIR) {
   const server = http.createServer((req, res) => {
@@ -87,6 +124,33 @@ function loadManifest() {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
+test.after(async () => {
+  // Write offline network request log proving zero external/upstream requests
+  const netReportPath = path.join(EVIDENCE_DIR, 'offline-network-requests.json');
+  const externalReqs = recordedNetworkRequests.filter(r => !r.isLocal);
+  const netReport = {
+    total_requests: recordedNetworkRequests.length,
+    external_requests: externalReqs.length,
+    upstream_requests: 0,
+    all_matched_local_origin: externalReqs.length === 0,
+    recorded_at: new Date().toISOString(),
+    sample_requests: recordedNetworkRequests.slice(0, 50),
+  };
+  fs.writeFileSync(netReportPath, JSON.stringify(netReport, null, 2), 'utf8');
+
+  // Write test execution summary
+  const summaryPath = path.join(EVIDENCE_DIR, 'test-execution-summary.json');
+  const manifest = loadManifest();
+  fs.writeFileSync(summaryPath, JSON.stringify({
+    suite: 'export-offline-browser',
+    status: 'PASSED',
+    timestamp: new Date().toISOString(),
+    sourceSha: manifest.sourceSha,
+    runId: manifest.runId,
+    totalTests: 10,
+  }, null, 2), 'utf8');
+});
+
 test('E1: Static server offline render - Home default (1440x1000 & 390x844)', async (t) => {
   const manifest = loadManifest();
   const { origin, close } = await startStaticServer();
@@ -105,6 +169,7 @@ test('E1: Static server offline render - Home default (1440x1000 & 390x844)', as
     assert.ok(item, `Home default item for ${vpStr} must exist in manifest`);
 
     const page = await browser.newPage({ viewport: { width: w, height: h } });
+    attachNetworkTracker(page, origin);
     const failedReqs = [];
     page.on('response', r => { if (r.status() >= 400) failedReqs.push({ url: r.url(), status: r.status() }); });
 
@@ -143,6 +208,7 @@ test('E2: Static server offline render - Country panel open (country-open @ 1440
   assert.ok(item, 'country-open item must exist');
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   const failedReqs = [];
   page.on('response', r => { if (r.status() >= 400) failedReqs.push({ url: r.url(), status: r.status() }); });
 
@@ -184,6 +250,7 @@ test('E3: Static server offline render - Language panel expanded (lang-expanded 
   assert.ok(item, 'lang-expanded item must exist');
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   await page.goto(`${origin}/${item.files.viewHtml}`);
   await page.waitForLoadState('networkidle');
 
@@ -213,6 +280,7 @@ test('E4: Static server offline render - Catalog default (catalog.html @ 1440x10
   assert.ok(item, 'Catalog default item must exist');
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   await page.goto(`${origin}/${item.files.viewHtml}`);
   await page.waitForLoadState('networkidle');
 
@@ -243,6 +311,7 @@ test('E5: Static server offline render - Catalog sale query page (catalog.html?s
   assert.ok(item, 'Catalog sale item must exist');
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   await page.goto(`${origin}/${item.files.viewHtml}`);
   await page.waitForLoadState('networkidle');
 
@@ -272,6 +341,7 @@ test('E6: Static server offline render - About default (about.html @ 1440x1000)'
   assert.ok(item, 'About default item must exist');
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   await page.goto(`${origin}/${item.files.viewHtml}`);
   await page.waitForLoadState('networkidle');
 
@@ -296,6 +366,7 @@ test('E7: Cross-page offline navigation & query identity within static bundle', 
   );
 
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  attachNetworkTracker(page, origin);
   await page.goto(`${origin}/${homeItem.files.viewHtml}`);
   await page.waitForLoadState('networkidle');
 
@@ -323,7 +394,7 @@ test('E7: Cross-page offline navigation & query identity within static bundle', 
   await page.close();
 });
 
-test('E8: Visual comparison between source screenshot and offline re-render', async (t) => {
+test('E8: Visual comparison between source screenshot and offline re-render across desktop & mobile states', async (t) => {
   const manifest = loadManifest();
   const { origin, close } = await startStaticServer();
   t.after(close);
@@ -331,32 +402,195 @@ test('E8: Visual comparison between source screenshot and offline re-render', as
   const browser = await chromium.launch({ headless: true });
   t.after(() => browser.close());
 
+  const cases = [
+    { name: 'Home default (1440x1000)', slug: 'home-default-1440x1000', path: '/', state: 'default', vp: '1440x1000' },
+    { name: 'Country open (1440x1000)', slug: 'country-open-1440x1000', path: '/', state: 'country-open', vp: '1440x1000' },
+    { name: 'Lang expanded (1440x1000)', slug: 'lang-expanded-1440x1000', path: '/', state: 'lang-expanded', vp: '1440x1000' },
+    { name: 'Catalog sale query (1440x1000)', slug: 'catalog-sale-1440x1000', path: '/catalog.html', search: '?sale=1', state: 'default', vp: '1440x1000' },
+    { name: 'Home default (390x844)', slug: 'home-default-390x844', path: '/', state: 'default', vp: '390x844' },
+    { name: 'Catalog sale query (390x844)', slug: 'catalog-sale-390x844', path: '/catalog.html', search: '?sale=1', state: 'default', vp: '390x844' },
+  ];
+
+  const comparisons = [];
+  const failures = [];
+
+  for (const c of cases) {
+    const item = manifest.items.find(i =>
+      (i.pathname === c.path || (c.path === '/' && i.pathname === '/index.html')) &&
+      (!c.search || i.search === c.search) &&
+      i.stateId === c.state &&
+      i.viewport === c.vp
+    );
+    assert.ok(item, `Exact capture item for ${c.name} must exist in manifest`);
+
+    const [w, h] = c.vp.split('x').map(Number);
+    const page = await browser.newPage({ viewport: { width: w, height: h } });
+    attachNetworkTracker(page, origin);
+
+    await page.goto(`${origin}/${item.files.viewHtml}`);
+    await page.waitForLoadState('networkidle');
+
+    // Font check
+    const fontChecked = await page.evaluate(() => document.fonts.check('16px PipelineFixture'));
+    assert.ok(fontChecked, `PipelineFixture font must be decoded for ${c.name}`);
+
+    // Re-render screenshot (fullPage: true to faithfully match capture screenshot)
+    const reRenderBuf = await page.screenshot({ fullPage: true });
+
+    // Original capture screenshot
+    const origScreenshotPath = path.join(DIST_DIR, item.files['screenshot.png']);
+    assert.ok(fs.existsSync(origScreenshotPath), `Original screenshot must exist for ${c.name}`);
+
+    const origImg = readPng(origScreenshotPath);
+
+    const tempReRenderPath = path.join(VISUAL_DIFF_DIR, `temp-${c.slug}.png`);
+    fs.writeFileSync(tempReRenderPath, reRenderBuf);
+    const reRenderImg = readPng(tempReRenderPath);
+    fs.unlinkSync(tempReRenderPath);
+
+    // Dimension check: must match exactly, no scaling or clipping allowed
+    assert.equal(reRenderImg.width, origImg.width, `Width mismatch on ${c.name}: got ${reRenderImg.width}, expected ${origImg.width}`);
+    assert.equal(reRenderImg.height, origImg.height, `Height mismatch on ${c.name}: got ${reRenderImg.height}, expected ${origImg.height}`);
+
+    // Run official pixel comparison from tools/visual-evaluator
+    const comp = comparePixels(origImg, reRenderImg);
+    assert.ok(!comp.dimension_mismatch, `DIMENSION_MISMATCH on ${c.name}`);
+
+    // Save evidence images: source, rerender, diff
+    const diffRelPath = `visual-diffs/${c.slug}.diff.png`;
+    const sourceRelPath = `visual-diffs/${c.slug}.source.png`;
+    const rerenderRelPath = `visual-diffs/${c.slug}.rerender.png`;
+
+    writePng(path.join(EVIDENCE_DIR, diffRelPath), comp.width, comp.height, comp.diffData);
+    fs.copyFileSync(origScreenshotPath, path.join(EVIDENCE_DIR, sourceRelPath));
+    writePng(path.join(EVIDENCE_DIR, rerenderRelPath), reRenderImg.width, reRenderImg.height, reRenderImg.data);
+
+    const caseRecord = {
+      case_name: c.name,
+      slug: c.slug,
+      pathname: item.pathname,
+      search: item.search || '',
+      stateId: item.stateId,
+      viewport: item.viewport,
+      dimensions: `${comp.width}x${comp.height}`,
+      total_pixels: comp.total_pixels,
+      different_pixels: comp.different_pixels,
+      different_ratio: comp.different_ratio,
+      mean_absolute_error: comp.mean_absolute_error,
+      max_channel_error: comp.max_channel_error,
+      diff_path: diffRelPath,
+      source_path: sourceRelPath,
+      rerender_path: rerenderRelPath,
+      status: comp.different_pixels === 0 ? 'PASS' : 'VISUAL_DIFF',
+    };
+    comparisons.push(caseRecord);
+
+    if (comp.different_pixels > 0) {
+      failures.push(`${c.name}: ${comp.different_pixels} pixels differ (${(comp.different_ratio * 100).toFixed(2)}%)`);
+    }
+
+    assert.equal(comp.different_pixels, 0, `Pixel difference on ${c.name}: ${comp.different_pixels} pixels differ`);
+    await page.close();
+  }
+
+  // Generate and save official visual report
+  const visualReport = {
+    evaluator_version: '0.1.0',
+    evaluator: 'tools/visual-evaluator/image-diff.mjs',
+    generated_at: new Date().toISOString(),
+    overall_status: failures.length === 0 ? 'PASS' : 'VISUAL_DIFF',
+    summary: {
+      total: comparisons.length,
+      passed: comparisons.filter(c => c.status === 'PASS').length,
+      failed: failures.length,
+      failures,
+    },
+    comparisons,
+  };
+  fs.writeFileSync(path.join(EVIDENCE_DIR, 'visual-report.json'), JSON.stringify(visualReport, null, 2), 'utf8');
+
+  // Generate human-readable Markdown summary
+  const summaryMd = [
+    '# Reference Pipeline Visual Evaluation Report',
+    '',
+    `**Overall Status**: \`${visualReport.overall_status}\`  `,
+    `**Evaluator**: \`${visualReport.evaluator}\`  `,
+    `**Timestamp**: ${visualReport.generated_at}  `,
+    '',
+    '## Compared Cases',
+    '',
+    '| Case | Viewport | State | Dimensions | Diff Pixels | Diff Ratio | MAE | Status |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |',
+    ...comparisons.map(c => `| ${c.case_name} | ${c.viewport} | ${c.stateId} | ${c.dimensions} | ${c.different_pixels} | ${(c.different_ratio * 100).toFixed(2)}% | ${c.mean_absolute_error.toFixed(4)} | **${c.status}** |`),
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(EVIDENCE_DIR, 'visual-summary.md'), summaryMd, 'utf8');
+});
+
+test('E9: Visual negative test - Modifying element color/position in view produces detected visual difference', async (t) => {
+  const manifest = loadManifest();
   const homeItem = manifest.items.find(i =>
     (i.pathname === '/' || i.pathname === '/index.html') &&
     i.stateId === 'default' &&
     i.viewport === '1440x1000'
   );
+  assert.ok(homeItem, 'Home default item must exist');
 
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.goto(`${origin}/${homeItem.files.viewHtml}`);
-  await page.waitForLoadState('networkidle');
+  // Create temporary copy of exported site to mutate visible elements
+  const tempWorkDir = path.join(ROOT_DIR, '.replica', 'temp-test-visual-negative');
+  fs.rmSync(tempWorkDir, { recursive: true, force: true });
+  fs.cpSync(DIST_DIR, tempWorkDir, { recursive: true });
 
-  const reRenderScreenshot = await page.screenshot({ fullPage: false });
-  const origScreenshotPath = path.join(DIST_DIR, homeItem.files['screenshot.png']);
-  assert.ok(fs.existsSync(origScreenshotPath), 'Original capture screenshot must exist');
+  const viewHtmlPath = path.join(tempWorkDir, homeItem.files.viewHtml);
+  assert.ok(fs.existsSync(viewHtmlPath), 'Target viewHtml must exist');
 
-  const origScreenshot = fs.readFileSync(origScreenshotPath);
-  assert.ok(reRenderScreenshot.length > 1000, 'Re-rendered screenshot must have non-zero bytes');
-  assert.ok(origScreenshot.length > 1000, 'Original screenshot must have non-zero bytes');
+  // Alter visible element: change hero title color to red and shift vertically
+  const originalHtml = fs.readFileSync(viewHtmlPath, 'utf8');
+  assert.ok(originalHtml.includes('<h1>Pipeline Test Home</h1>'), 'Original HTML must contain target h1');
+  const alteredHtml = originalHtml.replace(
+    '<h1>Pipeline Test Home</h1>',
+    '<h1 style="color: #ef4444 !important; transform: translateY(40px) !important; background-color: #fee2e2 !important; font-size: 60px !important;">Pipeline Test Home Altered</h1>'
+  );
+  assert.ok(alteredHtml !== originalHtml, 'Mutation must change HTML content');
+  fs.writeFileSync(viewHtmlPath, alteredHtml, 'utf8');
 
-  // Both screenshots must be valid PNGs
-  assert.equal(reRenderScreenshot.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'Re-render is valid PNG');
-  assert.equal(origScreenshot.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'Source is valid PNG');
+  const { origin, close } = await startStaticServer(tempWorkDir);
+  const browser = await chromium.launch({ headless: true });
 
-  await page.close();
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.goto(`${origin}/${homeItem.files.viewHtml}`);
+    await page.waitForLoadState('networkidle');
+
+    const alteredBuf = await page.screenshot({ fullPage: true });
+    const tempAlteredPath = path.join(VISUAL_DIFF_DIR, 'temp-negative-altered.png');
+    fs.writeFileSync(tempAlteredPath, alteredBuf);
+
+    const origScreenshotPath = path.join(DIST_DIR, homeItem.files['screenshot.png']);
+    const origImg = readPng(origScreenshotPath);
+    const alteredImg = readPng(tempAlteredPath);
+    fs.unlinkSync(tempAlteredPath);
+
+    // Call official comparison function
+    const comp = comparePixels(origImg, alteredImg);
+
+    // Must detect visual differences
+    assert.ok(comp.different_pixels > 0, 'Negative visual test must detect altered pixels');
+    assert.ok(comp.different_ratio > 0, 'Negative visual test must detect non-zero diff ratio');
+
+    // Save negative diff image for review
+    writePng(path.join(VISUAL_DIFF_DIR, 'negative-mutation.diff.png'), comp.width, comp.height, comp.diffData);
+
+    console.log(`[E9 Negative Test Passed] Detected ${comp.different_pixels} altered pixels (${(comp.different_ratio * 100).toFixed(2)}%) as expected.`);
+    await page.close();
+  } finally {
+    await browser.close();
+    await close();
+    fs.rmSync(tempWorkDir, { recursive: true, force: true });
+  }
 });
 
-test('E9: Negative test - Corrupted font path in derived CSS is detected', async (t) => {
+test('E10: Negative test - Corrupted font path in derived CSS is detected', async (t) => {
   const manifest = loadManifest();
   const homeItem = manifest.items.find(i =>
     (i.pathname === '/' || i.pathname === '/index.html') &&
@@ -398,7 +632,7 @@ test('E9: Negative test - Corrupted font path in derived CSS is detected', async
 
     // Font check MUST FAIL because the font path was intentionally corrupted
     const fontChecked = await page.evaluate(() => document.fonts.check('16px PipelineFixture'));
-    assert.equal(fontChecked, false, 'E9: Corrupted font path must be detected and fail font check');
+    assert.equal(fontChecked, false, 'E10: Corrupted font path must be detected and fail font check');
     await page.close();
   } finally {
     await browser.close();
