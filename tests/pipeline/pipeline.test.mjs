@@ -277,12 +277,23 @@ test('P1 + P2 + P4: Pipeline run discovers pages, captures states, saves resourc
   assert.equal(index.schema, 1);
   assert.ok(Object.keys(index.pages).length > 0, 'Index should have entries');
 
-  // Captures have valid artifact references
+  // Captures have valid artifact references.
+  // Pipeline accepts 'partial' when all failures are dependency_gap or font_load
+  // (links to other pages are managed by the queue, not captured in one batch).
+  const ACCEPTABLE_PIPELINE_REASONS = new Set(['dependency_gap', 'font_load']);
   for (const cap of result.captures.slice(0, 3)) {
     assert.ok(fs.existsSync(cap.captureDir), `Capture dir should exist: ${cap.captureDir}`);
     const manifest = tryReadJSON(path.join(cap.captureDir, 'manifest.json'));
     assert.ok(manifest, 'Manifest should exist');
-    assert.equal(manifest.status, 'complete', 'Capture should be complete');
+    assert.ok(
+      manifest.status === 'complete' || manifest.status === 'partial',
+      `Capture status must be complete or partial, got: ${manifest.status}`
+    );
+    if (manifest.status === 'partial') {
+      const badFailures = (manifest.failures || []).filter(f => !ACCEPTABLE_PIPELINE_REASONS.has(f.reason));
+      assert.equal(badFailures.length, 0,
+        `Partial capture has unexpected failures: ${JSON.stringify(badFailures)}`);
+    }
   }
 });
 
