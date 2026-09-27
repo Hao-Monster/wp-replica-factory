@@ -44,6 +44,9 @@ jobs:
         run: node --test tests/pipeline/pipeline.test.mjs --test-name-pattern "N[0-9]"
         timeout-minutes: 8
 
+      - name: Evidence adapter verification tests (V1-V4)
+        run: node --test tests/pipeline/adapt-evidence.test.mjs
+
       - name: Collect pipeline evidence (sanitized)
         if: always()
         run: python tests/pipeline/collect-pipeline-evidence.py

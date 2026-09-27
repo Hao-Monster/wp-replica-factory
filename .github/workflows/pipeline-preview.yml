@@ -118,6 +118,9 @@ jobs:
         run: node --test tests/pipeline/export-offline-browser.test.mjs
         timeout-minutes: 5
 
+      - name: Evidence adapter verification tests (V1-V4)
+        run: node --test tests/pipeline/adapt-evidence.test.mjs
+
       - name: Collect sanitized pipeline CI evidence
         if: always()
         run: python tests/pipeline/collect-pipeline-evidence.py

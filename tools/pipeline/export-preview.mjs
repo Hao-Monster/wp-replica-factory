@@ -112,11 +112,29 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
   // Maps routePath@viewport -> captureId (default state)
   const navigationMap = new Map();
   const allCaptures = [];
+  const seenCaptureIds = new Set();
 
   for (const [key, entry] of Object.entries(refIndex.pages || {})) {
     const { url, stateId, viewport, captureDir, files = {} } = entry;
     const absCaptureDir = path.isAbsolute(captureDir) ? captureDir : path.resolve(actualInputDir, captureDir);
-    const captureId = path.basename(absCaptureDir);
+
+    let captureId = entry.captureId;
+    if (!captureId) {
+      const baseName = path.basename(absCaptureDir);
+      if (captureDir && captureDir !== '.' && captureDir !== '' && !seenCaptureIds.has(baseName)) {
+        captureId = baseName;
+      } else {
+        const cleanState = (stateId || 'default').replace(/[^a-zA-Z0-9-_]/g, '_');
+        const cleanVp = (viewport || 'default').replace(/[^a-zA-Z0-9-_]/g, '_');
+        let routeSlug = 'pdp';
+        try {
+          const u = new URL(url);
+          routeSlug = u.pathname.replace(/^\/|\/$/g, '').replace(/[^a-zA-Z0-9-_]/g, '_') || 'home';
+        } catch { /* ignore */ }
+        captureId = `${routeSlug}-${cleanState}-${cleanVp}`;
+      }
+    }
+    seenCaptureIds.add(captureId);
 
     if (!fs.existsSync(absCaptureDir)) {
       console.warn(`[export-preview] Warning: captureDir does not exist: ${absCaptureDir}`);
@@ -157,9 +175,22 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     const destCaptureDir = path.join(exportCapturesDir, captureId);
     fs.mkdirSync(destCaptureDir, { recursive: true });
 
+    const resolveFile = (relPath) => {
+      if (!relPath) return null;
+      const candidates = [
+        path.join(absCaptureDir, relPath),
+        path.join(actualInputDir, relPath),
+        path.join(absCaptureDir, path.basename(relPath)),
+      ];
+      for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+      }
+      return null;
+    };
+
     // Copy manifest (sanitized)
-    const manifestPath = path.join(absCaptureDir, 'manifest.json');
-    const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : null;
+    const manifestPath = resolveFile('manifest.json');
+    const manifest = manifestPath ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : null;
     if (manifest) {
       const sanitizedManifest = { ...manifest };
       if (sanitizedManifest.policy) {
@@ -169,9 +200,9 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     }
 
     // Copy all pages/ subdirectories so all state captures are available
-    const srcPagesDir = path.join(absCaptureDir, 'pages');
+    const srcPagesDir = resolveFile('pages');
     const destPagesDir = path.join(destCaptureDir, 'pages');
-    if (fs.existsSync(srcPagesDir)) {
+    if (srcPagesDir) {
       fs.cpSync(srcPagesDir, destPagesDir, { recursive: true });
     }
 
@@ -236,8 +267,8 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     const exportFiles = {};
     for (const [fileKey, relPath] of Object.entries(files)) {
       const actualRelPath = capMatch?.files?.[fileKey]?.path || relPath;
-      const srcFile = path.join(absCaptureDir, actualRelPath);
-      if (fs.existsSync(srcFile)) {
+      const srcFile = resolveFile(actualRelPath);
+      if (srcFile) {
         const destFile = path.join(destCaptureDir, actualRelPath);
         fs.mkdirSync(path.dirname(destFile), { recursive: true });
         fs.copyFileSync(srcFile, destFile);
@@ -246,8 +277,8 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     }
 
     for (const extra of ['routes.json', 'resources.json', 'reports/download.json']) {
-      const srcExtra = path.join(absCaptureDir, extra);
-      if (fs.existsSync(srcExtra)) {
+      const srcExtra = resolveFile(extra);
+      if (srcExtra) {
         const destExtra = path.join(destCaptureDir, extra);
         fs.mkdirSync(path.dirname(destExtra), { recursive: true });
         fs.copyFileSync(srcExtra, destExtra);
@@ -255,9 +286,9 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     }
 
     // Copy original site/objects (untouched)
-    const srcObjectsDir = path.join(absCaptureDir, 'site', 'objects');
+    const srcObjectsDir = resolveFile('site/objects');
     const destObjectsDir = path.join(destCaptureDir, 'site', 'objects');
-    if (fs.existsSync(srcObjectsDir)) {
+    if (srcObjectsDir) {
       fs.mkdirSync(destObjectsDir, { recursive: true });
       for (const objFile of fs.readdirSync(srcObjectsDir)) {
         const srcObj = path.join(srcObjectsDir, objFile);
@@ -269,8 +300,8 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     }
 
     // Build resource map for this capture
-    const resourcesPath = path.join(absCaptureDir, 'resources.json');
-    const resourcesData = fs.existsSync(resourcesPath) ? JSON.parse(fs.readFileSync(resourcesPath, 'utf8')) : null;
+    const resourcesPath = resolveFile('resources.json');
+    const resourcesData = resourcesPath ? JSON.parse(fs.readFileSync(resourcesPath, 'utf8')) : null;
     const captureResources = [];
     const byUrl = new Map();
 
@@ -382,7 +413,7 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
     // Now localize HTML
     let viewRelPath = null;
     const actualRenderedRel = capMatch?.files?.['rendered.html']?.path || files['rendered.html'];
-    const rawRenderedPath = actualRenderedRel ? path.join(absCaptureDir, actualRenderedRel) : null;
+    const rawRenderedPath = resolveFile(actualRenderedRel);
     if (rawRenderedPath && fs.existsSync(rawRenderedPath)) {
       const rawHtml = fs.readFileSync(rawRenderedPath, 'utf8');
       const ast = parse(rawHtml);
