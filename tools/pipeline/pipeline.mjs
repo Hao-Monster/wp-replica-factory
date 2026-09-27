@@ -564,14 +564,29 @@ export async function runPipeline(contract, {
 // ---------------------------------------------------------------------------
 
 function recordCapture({ index, captures, url, stateId, viewport, captureDir, captureId }) {
-  // Collect file evidence
+  // Collect file evidence matching this specific stateId and viewport from manifest.captures
   const files = {};
-  for (const name of ['rendered.html', 'screenshot.png', 'signals.json']) {
-    const pagesDir = path.join(captureDir, 'pages');
-    // Find the file in pages/ subdirs by name
-    const found = findFileUnder(pagesDir, name);
-    if (found) files[name] = path.relative(captureDir, found);
+  const manifest = tryReadJSON(path.join(captureDir, 'manifest.json'));
+  const capMatch = manifest?.captures?.find(c =>
+    (c.state === stateId || (!c.state && stateId === 'default')) &&
+    (!viewport || `${c.viewport?.width}x${c.viewport?.height}` === viewport)
+  ) || manifest?.captures?.find(c => c.state === stateId) || manifest?.captures?.[0];
+
+  if (capMatch?.files) {
+    for (const [k, v] of Object.entries(capMatch.files)) {
+      if (v?.path) files[k] = v.path;
+    }
   }
+
+  // Fallback if manifest files not found
+  for (const name of ['rendered.html', 'screenshot.png', 'signals.json']) {
+    if (!files[name]) {
+      const pagesDir = path.join(captureDir, 'pages');
+      const found = findFileUnder(pagesDir, name);
+      if (found) files[name] = path.relative(captureDir, found);
+    }
+  }
+
   index.record(url, stateId, viewport, captureDir, files);
   captures.push({ url, stateId, viewport, captureDir, captureId, files, capturedAt: new Date().toISOString() });
 }
