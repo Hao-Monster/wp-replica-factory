@@ -44,6 +44,7 @@ import {
   PIPELINE_SCHEMA,
 } from '../../tools/pipeline/pipeline.mjs';
 import { openQueue, buildTaskKey } from '../../tools/pipeline/queue.mjs';
+import { exportPreview } from '../../tools/pipeline/export-preview.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -676,6 +677,89 @@ test('G1: STATUS constants are defined and distinct', () => {
 
 test('G2: PIPELINE_SCHEMA is versioned string', () => {
   assert.match(PIPELINE_SCHEMA, /^reference-pipeline\/v\d+/, 'Schema must be versioned');
+});
+
+test('N9: Strict state matching – Omitted mobile expanded state never silently substitutes desktop or captures[0]', () => {
+  const testDir = path.join(WORK_DIR, 'n9-strict-match-test');
+  const exportDir = path.join(WORK_DIR, 'n9-strict-match-export');
+  fs.rmSync(testDir, { recursive: true, force: true });
+  fs.rmSync(exportDir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(testDir, 'pages', 'desktop'), { recursive: true });
+
+  // Create dummy desktop files
+  fs.writeFileSync(path.join(testDir, 'pages', 'desktop', 'rendered.html'), '<html><body>Desktop Content</body></html>');
+  fs.writeFileSync(path.join(testDir, 'pages', 'desktop', 'screenshot.png'), 'fake-desktop-png-data');
+
+  // Manifest only has desktop default capture
+  const manifest = {
+    schema: 'replica-downloader/v0.1',
+    status: 'partial',
+    captures: [
+      {
+        capture_id: 'desktop-cap',
+        url: 'https://test.example.com/pdp?sku=1',
+        state: 'default',
+        viewport: { width: 1440, height: 1000 },
+        files: {
+          'rendered.html': { path: 'pages/desktop/rendered.html' },
+          'screenshot.png': { path: 'pages/desktop/screenshot.png' },
+        },
+      },
+    ],
+  };
+  fs.writeFileSync(path.join(testDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
+  // reference-index requests both desktop default AND mobile-accordion-open
+  const refIndex = {
+    schema: 1,
+    pages: {
+      'pdp@default@1440x1000': {
+        url: 'https://test.example.com/pdp?sku=1',
+        stateId: 'default',
+        viewport: '1440x1000',
+        captureDir: '.',
+        files: {
+          'rendered.html': 'pages/desktop/rendered.html',
+          'screenshot.png': 'pages/desktop/screenshot.png',
+        },
+      },
+      'pdp@mobile-accordion-open@390x844': {
+        url: 'https://test.example.com/pdp?sku=1',
+        stateId: 'mobile-accordion-open',
+        viewport: '390x844',
+        captureDir: '.',
+        files: {
+          'rendered.html': 'pages/mobile/rendered.html',
+          'screenshot.png': 'pages/mobile/screenshot.png',
+        },
+      },
+    },
+  };
+  fs.writeFileSync(path.join(testDir, 'reference-index.json'), JSON.stringify(refIndex, null, 2));
+
+  const { previewManifest } = exportPreview({
+    inputDir: testDir,
+    outputDir: exportDir,
+  });
+
+  assert.equal(previewManifest.items.length, 2, 'Must export both declared index items');
+  const desktopItem = previewManifest.items.find(i => i.viewport === '1440x1000');
+  const mobileItem = previewManifest.items.find(i => i.viewport === '390x844');
+
+  assert.ok(desktopItem, 'Desktop item must exist');
+  assert.ok(mobileItem, 'Mobile item must exist');
+
+  // Verify desktop item got its screenshot
+  assert.ok(desktopItem.files['screenshot.png'], 'Desktop must have screenshot.png populated');
+
+  // CRITICAL: Mobile item MUST NOT have desktop screenshot or fallback to captures[0]
+  assert.equal(mobileItem.status, 'MISSING_EXACT_CAPTURE', 'Omitted mobile expanded state must be marked MISSING_EXACT_CAPTURE');
+  assert.equal(mobileItem.files['screenshot.png'], null, 'Omitted mobile capture must NOT substitute desktop screenshot');
+  assert.equal(mobileItem.files['rendered.html'], null, 'Omitted mobile capture must NOT substitute desktop rendered.html');
+  assert.notEqual(mobileItem.files['screenshot.png'], desktopItem.files['screenshot.png'], 'Mobile must never inherit desktop screenshot');
+
+  // Overall status must be PARTIAL because of the gap
+  assert.equal(previewManifest.status, 'PARTIAL', 'Overall status must reflect the gap as PARTIAL');
 });
 
 // ============================================================

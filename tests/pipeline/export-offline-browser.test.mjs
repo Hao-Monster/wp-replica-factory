@@ -489,11 +489,10 @@ test('E8: Visual comparison between source screenshot and offline re-render acro
       failures.push(`${c.name}: ${comp.different_pixels} pixels differ (${(comp.different_ratio * 100).toFixed(2)}%)`);
     }
 
-    assert.equal(comp.different_pixels, 0, `Pixel difference on ${c.name}: ${comp.different_pixels} pixels differ`);
     await page.close();
   }
 
-  // Generate and save official visual report
+  // Generate and save official visual report before asserting
   const visualReport = {
     evaluator_version: '0.1.0',
     evaluator: 'tools/visual-evaluator/image-diff.mjs',
@@ -525,6 +524,9 @@ test('E8: Visual comparison between source screenshot and offline re-render acro
     '',
   ].join('\n');
   fs.writeFileSync(path.join(EVIDENCE_DIR, 'visual-summary.md'), summaryMd, 'utf8');
+
+  // Assert all cases passed visual comparison with 0 pixel difference
+  assert.equal(failures.length, 0, `Pixel differences detected across ${failures.length} cases:\n${failures.join('\n')}`);
 });
 
 test('E9: Visual negative test - Modifying element color/position in view produces detected visual difference', async (t) => {

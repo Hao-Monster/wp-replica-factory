@@ -153,7 +153,7 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
   const allResources = new Map();
 
   for (const cap of allCaptures) {
-    const { captureId, absCaptureDir, url, stateId, viewport, files } = cap;
+    const { captureId, absCaptureDir, url, stateId, viewport, files, entry } = cap;
     const destCaptureDir = path.join(exportCapturesDir, captureId);
     fs.mkdirSync(destCaptureDir, { recursive: true });
 
@@ -175,11 +175,62 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
       fs.cpSync(srcPagesDir, destPagesDir, { recursive: true });
     }
 
-    // Match exact state capture in manifest.captures
-    const capMatch = manifest?.captures?.find(c =>
-      (c.state === stateId || (!c.state && stateId === 'default')) &&
-      (!viewport || `${c.viewport?.width}x${c.viewport?.height}` === viewport)
-    ) || manifest?.captures?.find(c => c.state === stateId) || manifest?.captures?.[0];
+    // Match exact state capture in manifest.captures strictly
+    // Prevents silent fallback chain (exact match -> match state -> captures[0])
+    let capMatch = null;
+    let exactMatchFailed = false;
+
+    if (manifest?.captures && Array.isArray(manifest.captures) && manifest.captures.length > 0) {
+      capMatch = manifest.captures.find(c => {
+        const stateMatch = (c.state === stateId) || (!c.state && stateId === 'default');
+        const vpMatch = !viewport || `${c.viewport?.width}x${c.viewport?.height}` === viewport;
+
+        let urlMatch = true;
+        if (c.url && url) {
+          urlMatch = normalizeRoutePath(c.url) === normalizeRoutePath(url);
+        }
+
+        let dprMatch = true;
+        if (c.dpr !== undefined && entry?.dpr !== undefined) {
+          dprMatch = Number(c.dpr) === Number(entry.dpr);
+        }
+
+        return stateMatch && vpMatch && urlMatch && dprMatch;
+      });
+
+      if (!capMatch) {
+        exactMatchFailed = true;
+        console.warn(`[export-preview] Strict check failed: no exact capture in manifest.captures for url=${url}, state=${stateId}, viewport=${viewport}. Silent fallback disabled.`);
+      }
+    }
+
+    if (exactMatchFailed) {
+      let parsedUrl;
+      try { parsedUrl = new URL(url); } catch { parsedUrl = { pathname: url, search: '' }; }
+
+      items.push({
+        captureId,
+        url,
+        pathname: parsedUrl.pathname,
+        search: parsedUrl.search || '',
+        stateId,
+        viewport,
+        isMobile: viewport.includes('390x'),
+        isInteractive: stateId !== 'default',
+        status: 'MISSING_EXACT_CAPTURE',
+        failures: [
+          `Missing exact capture in manifest for state '${stateId}' at viewport '${viewport}' (${url}). Silent substitution is disabled.`
+        ],
+        files: {
+          viewHtml: null,
+          'screenshot.png': null,
+          'rendered.html': null,
+        },
+        resourcesCount: 0,
+        resources: [],
+      });
+      continue;
+    }
 
     // Copy raw page files (rendered.html, screenshot.png, signals.json, routes.json, reports/)
     const exportFiles = {};
@@ -561,7 +612,8 @@ export function exportPreview({ inputDir, outputDir, contractPath, sourceSha, ru
   const uniqueUrls = [...new Set(items.map(i => i.url))];
   const uniqueStates = [...new Set(items.map(i => i.stateId))];
   const uniqueViewports = [...new Set(items.map(i => i.viewport))];
-  const overallStatus = checkpoint?.status || (items.some(i => i.status === 'partial') ? 'PARTIAL' : 'TECH_VERIFIED');
+  const hasGaps = items.some(i => i.status === 'MISSING_EXACT_CAPTURE' || i.status === 'partial' || i.status === 'PARTIAL' || !i.files?.viewHtml);
+  const overallStatus = hasGaps ? 'PARTIAL' : (checkpoint?.status || (items.some(i => i.status === 'partial') ? 'PARTIAL' : 'TECH_VERIFIED'));
 
   const previewManifest = {
     schema: 1,
@@ -1097,13 +1149,18 @@ function generatePortalHtml(manifest) {
         card.className = 'capture-card' + (item === activeItem ? ' active' : '');
         card.onclick = () => selectItem(item);
 
-        const routeDisplay = (item.pathname || '/') + (item.search || '');
+        const statusHtml = item.status === 'complete'
+          ? '<span class="tag" style="color:#10b981">✓ complete</span>'
+          : (item.status === 'MISSING_EXACT_CAPTURE'
+              ? '<span class="tag" style="color:#ef4444; border:1px solid #ef444466">✗ missing capture</span>'
+              : '<span class="tag" style="color:#f59e0b">partial</span>');
+
         card.innerHTML = \`
           <div class="card-url">\${escapeHtml(routeDisplay)}</div>
           <div class="card-tags">
             <span class="tag state">\${escapeHtml(item.stateId)}</span>
             <span class="tag \${item.isMobile ? 'mobile' : ''}">\${escapeHtml(item.viewport)}</span>
-            \${item.status === 'complete' ? '<span class="tag" style="color:#10b981">✓ complete</span>' : '<span class="tag" style="color:#f59e0b">partial</span>'}
+            \${statusHtml}
           </div>
         \`;
         container.appendChild(card);
@@ -1146,13 +1203,25 @@ function generatePortalHtml(manifest) {
       frameContainer.style.width = w + 'px';
       applyZoom();
 
-      const targetSrc = item.files.viewHtml || item.files['rendered.html'] || 'about:blank';
-      iframe.src = targetSrc;
-      newTabBtn.href = targetSrc;
+      if (item.status === 'MISSING_EXACT_CAPTURE' || !item.files?.viewHtml) {
+        iframe.removeAttribute('src');
+        iframe.srcdoc = \`<!DOCTYPE html><html><body style="background:#0b0f19;color:#f87171;font-family:-apple-system,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:24px;box-sizing:border-box;"><div style="background:#111827;border:1px solid #374151;border-radius:8px;padding:24px;max-width:540px;"><h3 style="color:#ef4444;margin-bottom:12px;font-size:16px;">Missing Exact Reference Capture</h3><p style="color:#cbd5e1;font-size:14px;margin-bottom:8px;">No capture found for state: <b>\${escapeHtml(item.stateId)}</b> &bull; viewport: <b>\${escapeHtml(item.viewport)}</b></p><p style="color:#94a3b8;font-size:12px;margin-bottom:16px;word-break:break-all;">URL: <code>\${escapeHtml(item.url)}</code></p><div style="background:#1e293b;padding:8px 12px;border-radius:4px;color:#f59e0b;font-size:12px;">Silent fallback is disabled. Desktop or default capture was NOT substituted.</div></div></body></html>\`;
+        newTabBtn.removeAttribute('href');
+        newTabBtn.style.opacity = '0.5';
+        newTabBtn.style.pointerEvents = 'none';
+      } else {
+        iframe.removeAttribute('srcdoc');
+        const targetSrc = item.files.viewHtml || item.files['rendered.html'] || 'about:blank';
+        iframe.src = targetSrc;
+        newTabBtn.href = targetSrc;
+        newTabBtn.style.opacity = '1';
+        newTabBtn.style.pointerEvents = 'auto';
+      }
 
       // Update screenshot
       const ssImg = document.getElementById('screenshot-img');
-      ssImg.src = item.files['screenshot.png'] || '';
+      ssImg.src = item.files?.['screenshot.png'] || '';
+      ssImg.alt = item.files?.['screenshot.png'] ? \`Capture Screenshot for \${item.stateId}\` : 'No screenshot available (missing capture)';
 
       // Update signals
       const signalsBlock = document.getElementById('signals-json');

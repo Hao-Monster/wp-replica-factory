@@ -1,7 +1,9 @@
+# A 消费者交接文档：参考包流水线 MVP 与页面入口去向表
+
 > **对接核验状态**：`CONSUMER_NOT_YET_VERIFIED`  
-> **框架维护者验证**：`NEW_DIRECTORY_SMOKE: PASSED` (已在独立全新临时目录验证锁版本依赖安装、CLI入口、22任务采集、静态导出与离线浏览器端 E1-E10 测试)  
-> **固定框架审查可用 SHA**：`f8ae46f501dfd0ae15fd979f8f53e91b9f303d32`  
-> 框架维护者（E）已在干净环境完成全套质量闭环；尚未在具体商业站点（如 Reebelo）由 A 实际运行。待 A 回传真实调用环境与错误后，再进行最小接口适配。
+> **框架维护者验证**：`NEW_DIRECTORY_SMOKE: PASSED`（已在干净独立目录完成 E1-E10 离线端测试与真实 PDP 资料适配）  
+> **固定框架可用 SHA**：通过 `git rev-parse HEAD` 动态读取（本轮交付基准提交：`5fe5dc4fd54d06dc8fbf9131b2dd4d55b4d65006` 或本分支最新 HEAD）  
+> **交接目标**：Agent A（WordPress 全站页面创建与导航连通）与 Agent C（产品目录与事实核对）
 
 ---
 
@@ -14,7 +16,39 @@
 
 ---
 
-## 2. 干净环境安装与依赖规范
+## 2. 真实 PDP 入口去向与路由缺口分析（协助 A/C 补齐页面）
+
+框架维护者（E）已根据已取得的 iPhone 15 详情页 DOM 片段与状态数据，提取出以下**入口去向表**，协助 A 与 C 排查页面遗漏：
+
+### 2.1 铁律与概念区分（必读）
+1. **“缺本地参考文件”不等于“线上 404”**：
+   - 缺本地参考（`MISSING_LOCAL_REFERENCE_PAGE` / `MISSING_LOCAL_REFERENCE_STATE`）表示采集包中尚未包含该目标页面或展开状态的离线快照，**绝不能推定线上目标就是 404**。
+2. **无 href 按钮不判 404**：
+   - 带有点击事件但无静态 href 的按钮（如展开成色说明、Trade-in 弹层），静态数据无法确定的标记为 `UNKNOWN`，交由 A/C 在具备浏览器上下文时核对，禁止无端猜测为首页或死链。
+3. **职责划分**：
+   - 本表协助 A/C 明确哪些页面还缺采集资料；
+   - WordPress 站内的真实 Page 创建、URL 永久链接（Permalinks）配置、菜单挂载与点击验收继续由 Agent A 负责。
+
+### 2.2 详细入口去向清单 (Outbound Links & Entry Points)
+| 所在位置 | 可见文字 / 可访问名称 | 原始动作 / href | 解析目标 URL | 入口类型 | 是否有本地参考 | 缺口状态 | 处置与核对建议 |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `pdp/header` | **EN** | `button.fancy-underline` | `UNKNOWN` | `Modal` | ❌ 否 | `STATIC_DATA_UNKNOWN_JS_ACTION` | 语言/国家切换浮层，A/C 需在浏览器确认其唤起的弹层 DOM |
+| `pdp/buy-box` | **Flash Sale** | `div.bg-[#fee9e8]` | `https://reebelo.com/collections/flash-sale` | `Page navigation` | ❌ 否 | `MISSING_LOCAL_REFERENCE_PAGE` | 特卖集合页，A 需确认本站是否需建对应促销分类页 |
+| `pdp/buy-box` | **Trustpilot (281 reviews)** | `svg Trustpilot + text` | `https://www.trustpilot.com/review/reebelo.com` | `External link` | ❌ 否 | `EXTERNAL_DEPENDENCY` | 第三方评价平台外链，WordPress 模板应保留外链属性（`rel="noopener"`） |
+| `pdp/buy-box` | **Unlocked device info** | `button[aria-label="Unlocked..."]` | `UNKNOWN` | `Modal` | ❌ 否 | `STATIC_DATA_UNKNOWN_JS_ACTION` | 网络锁说明 Tooltip / 弹层，需确认是否为内嵌模态框 |
+| `pdp/buy-box` | **before trade-in** | `button#e2e-pdp-before-trade-in` | `UNKNOWN` | `Modal` | ❌ 否 | `STATIC_DATA_UNKNOWN_JS_ACTION` | 以旧换新估价弹窗，业务逻辑需 D/A 评估是否接入 |
+| `pdp/buy-box` | **Color Selector** | `color-chips (Pink/Black/Blue...)` | `?color=...` | `Business action` | ⚠️ 部分 | `PARTIAL_LOCAL_REFERENCE` | 粉色（Pink）为当前选中且具备主图的变体，其余颜色缺对应图 |
+| `pdp/buy-box` | **Storage Selector** | `storage-buttons (128GB/256GB...)` | `?storage=...` | `Business action` | ⚠️ 部分 | `PARTIAL_LOCAL_REFERENCE` | 128GB 为当前核验事实，256GB/512GB 为待售变体 |
+| `pdp/buy-box` | **Condition Selector** | `condition-cards (Good/Like New...)` | `?condition=...` | `Business action` | ⚠️ 部分 | `PARTIAL_LOCAL_REFERENCE` | Good 为当前选定成色 |
+| `pdp/gallery` | **Gallery Carousel** | `Swiper buttons (Thumb 0..4)` | `javascript:void(0)` | `Carousel` | ✅ 是 | `NONE` | **5 张高清原图已完全在本地就绪**，B/A 可直接引用 |
+| `pdp/buy-box` | **Add to Cart** | `button#e2e-pdp-bottom-bar-add-to-cart` | `https://reebelo.com/cart` | `Business action` | ❌ 否 | `LIVE_BUSINESS_TRANSACTION` | WooCommerce 标准加购行为，禁止框架伪造支付流程 |
+| `pdp/accordion` | **Specifications** | `accordion toggle button` | `#specs` | `Tab` | ❌ 否 | `MISSING_LOCAL_REFERENCE_STATE` | 规格列表展开态，缺展开后 DOM 证据 |
+| `pdp/accordion` | **Customer Reviews** | `accordion toggle button` | `#reviews` | `Tab` | ❌ 否 | `MISSING_LOCAL_REFERENCE_STATE` | 评价列表展开态，缺展开后 DOM 证据 |
+| `pdp/accordion` | **Frequently Asked Questions** | `accordion toggle button` | `#faq` | `Tab` | ❌ 否 | `MISSING_LOCAL_REFERENCE_STATE` | 常见问题展开态，缺展开后 DOM 证据 |
+
+---
+
+## 3. 干净环境安装与依赖规范
 
 框架运行要求 Node.js >= 22，采用锁定的 Crawlee 3.18.1 与 Playwright 1.55.0。
 
@@ -34,9 +68,9 @@ node tools/pipeline/cli.mjs --help
 
 ---
 
-## 3. 命令行调用参考
+## 4. 命令行调用参考
 
-### 3.1 启动正式采集
+### 4.1 启动正式采集
 ```bash
 node tools/pipeline/cli.mjs run <contract.json> \
   --output <output-dir> \
@@ -44,71 +78,12 @@ node tools/pipeline/cli.mjs run <contract.json> \
   [--budget 50]
 ```
 
-### 3.2 中断后恢复续跑 (Resume)
-保持相同的 `contract.json` 配置版本（`configVer`），传入原 `run-id`：
-```bash
-node tools/pipeline/cli.mjs resume <contract.json> \
-  --output <output-dir> \
-  --storage <crawlee-storage-dir> \
-  --run-id <run-id> \
-  [--budget 50]
-```
-
-### 3.3 检查当前状态
-```bash
-node tools/pipeline/cli.mjs status \
-  --output <output-dir> \
-  --run-id <run-id>
-```
-
-### 3.4 导出静态预览站点
-将采集输出导出为可直接静态查看的网页（供本地浏览器或 GitHub Pages 部署）：
+### 4.2 导出静态预览站点
+将采集输出导出为可直接静态查看的网页（严格多状态与视口精确对应，禁止静默替代）：
 ```bash
 node tools/pipeline/export-preview.mjs \
   --input <output-dir>/<run-id> \
-  --output dist-preview \
-  --contract <contract.json>
-```
-
----
-
-## 4. 输入合同（Contract）格式规范
-
-参考 `tests/fixtures/pipeline-site/pipeline-contract.json`：
-
-```json
-{
-  "schema": 1,
-  "contractVersion": "v1",
-  "configVer": "v1",
-  "seed": "http://127.0.0.1:8080/",
-  "pageOrigins": ["http://127.0.0.1:8080"],
-  "assetOrigins": ["http://127.0.0.1:8080"],
-  "viewports": [
-    { "width": 1440, "height": 1000 },
-    { "width": 390, "height": 844 }
-  ],
-  "required_pages": [
-    "/",
-    "/catalog.html",
-    "/about.html",
-    "/catalog.html?sale=1"
-  ],
-  "required_states": [
-    "country-closed",
-    "country-open",
-    "lang-expanded"
-  ],
-  "states": [
-    {
-      "state_id": "country-open",
-      "path": "/",
-      "preconditions": [{ "selector": "#country-portal", "visible": false }],
-      "actions": [{ "type": "click", "selector": "#country-trigger-btn" }],
-      "assertions": [{ "selector": "#country-portal", "visible": true }]
-    }
-  ]
-}
+  --output dist-preview
 ```
 
 ---
@@ -137,11 +112,4 @@ node tools/pipeline/export-preview.mjs \
 
 - **Query 参数页面隔离**：例如 `/catalog.html?sale=1` 与 `/catalog.html` 为完全独立的任务和产物目录，绝不互相覆盖。
 - **状态身份标识**：每个交互状态（如 `country-open`、`filter-open`）独立保存在各自的 captureId 下。
-
----
-
-## 6. 已知限制与后续工作
-
-1. **模式范围说明**：新流水线 MVP 目前主要验证 `owned-fixture`；底层下载器虽支持有限 `authorized-public`，但具体商业站点的接入与适配仍依赖具体输入证据。不把代理池、验证码破解或后台登录作为路线。
-2. **字体真实性要求**：所有引用的自定义字体必须是合法有效的 TTF/WOFF/WOFF2 字体文件，浏览器必须真正完成 FontFace 解码（HTTP 200 或占位文件将触发门禁阻断）。
-3. **缺口核销**：未访问的同源页面依赖在单页采集时暂存为 pending，但在流水线完成前必须有对应已访问路由予以核销，否则判定为 `EVIDENCE_INCOMPLETE`。
+- **精确状态/视口匹配**：若缺少某一端状态（如缺少移动端展开态），导出器严格标红呈现缺口，禁止静默用桌面图填充。
