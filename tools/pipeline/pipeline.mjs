@@ -127,10 +127,22 @@ export function assertResumeCompatible(saved, current) {
  * @returns {object}
  */
 export function buildPagePolicy({ url, stateId, pageOrigins, assetOrigins, viewport, states, required_states = [] }) {
-  // Filter states to only those for this page/state
+  let routePath = '/';
+  let urlHasQuery = false;
+  try {
+    const u = new URL(url);
+    routePath = u.pathname + (u.search || '');
+    urlHasQuery = Boolean(u.search);
+  } catch { /* ignore */ }
+
+  // Include states for this page so state-handoff can resolve restores_state target
   const pageStates = stateId === 'default'
     ? []
-    : (states || []).filter(s => (s.state_id || s.name) === stateId);
+    : (states || []).filter(s => {
+      if (!s.path) return true;
+      if (s.path === routePath) return true;
+      return !urlHasQuery && s.path === routePath.split('?')[0];
+    });
 
   return {
     mode: 'owned-fixture',
@@ -139,7 +151,7 @@ export function buildPagePolicy({ url, stateId, pageOrigins, assetOrigins, viewp
     assetOrigins,
     viewports: [viewport],
     states: pageStates,
-    required_states: stateId === 'default' ? [] : required_states.filter(id => id === stateId),
+    required_states: stateId === 'default' ? [] : [stateId],
     // One page per task; link discovery is done via HTML extraction after capture
     maxPages: 1,
     maxDepth: 0,
@@ -276,10 +288,17 @@ export async function runPipeline(contract, {
     const r = await queue.enqueue({ url: seed, stateId: 'default', viewport: vpStr, configVer });
     seededKeys.push(r.uniqueKey);
 
-    // Enqueue explicitly required states for the seed URL
-    for (const stateId of required_states) {
-      const rs = await queue.enqueue({ url: seed, stateId, viewport: vpStr, configVer });
-      seededKeys.push(rs.uniqueKey);
+    // Enqueue states that belong to the seed URL
+    let seedPathname = '/';
+    try { seedPathname = new URL(seed).pathname; } catch { /* ignore */ }
+    for (const stateDef of (states || [])) {
+      if (!stateDef.path || stateDef.path === seedPathname) {
+        const sid = stateDef.state_id || stateDef.name;
+        if (sid && (required_states.length === 0 || required_states.includes(sid))) {
+          const rs = await queue.enqueue({ url: seed, stateId: sid, viewport: vpStr, configVer });
+          seededKeys.push(rs.uniqueKey);
+        }
+      }
     }
   }
 
@@ -292,6 +311,7 @@ export async function runPipeline(contract, {
   const index = new ReferenceIndex();
   const captures = [];
   const errors = [];
+  const pendingPageGaps = [];
   let tasksThisRun = 0;
   let challengeBlocked = false;
 
@@ -325,21 +345,36 @@ export async function runPipeline(contract, {
 
     // --- Crash recovery: check if output already verified ---
     // verify() returns {schema, status, errors} object, NOT an array.
-    // Accept partial with only expected failures (dependency_gap, font_load).
     const existingManifest = tryReadJSON(path.join(captureDir, 'manifest.json'));
     if (existingManifest?.status === 'complete' || existingManifest?.status === 'partial') {
       try {
         const verifyResult = verify(captureDir, {});
-        const nonAcceptable = (existingManifest.failures || []).filter(
-          f => !['dependency_gap', 'font_load'].includes(f.reason)
+        const hasIntegrityError = (verifyResult.errors || []).some(e =>
+          e.includes('hash mismatch') ||
+          e.includes('empty file') ||
+          e.includes('ownership marker') ||
+          e.includes('resource byte counts') ||
+          e.includes('resource content invalid') ||
+          e.includes('capture evidence missing')
         );
-        const alreadyCaptured = Array.isArray(existingManifest.captures) && existingManifest.captures.length > 0;
-        if ((verifyResult.status === 'complete') ||
-            (nonAcceptable.length === 0 && alreadyCaptured)) {
-          recordCapture({ index, captures, url, stateId, viewport, captureDir, captureId });
-          await queue.markHandled(task);
-          tasksThisRun++;
-          continue;
+
+        if (!hasIntegrityError) {
+          const failures = existingManifest.failures || [];
+          const nonAcceptable = failures.filter(f =>
+            f.reason !== 'dependency_gap' || f.kind !== 'page'
+          );
+          if (verifyResult.status === 'complete' || (nonAcceptable.length === 0 && Array.isArray(existingManifest.captures) && existingManifest.captures.length > 0)) {
+            for (const f of failures.filter(f => f.reason === 'dependency_gap' && f.kind === 'page')) {
+              pendingPageGaps.push({ fromUrl: url, targetUrl: f.url });
+            }
+            recordCapture({ index, captures, url, stateId, viewport, captureDir, captureId });
+            await queue.markHandled(task);
+            tasksThisRun++;
+            continue;
+          }
+        } else {
+          // Integrity error detected - corrupted files cannot be accepted or reused as complete
+          errors.push({ url, stateId, viewport, error: 'corrupt_output', detail: verifyResult.errors });
         }
       } catch {
         // verification threw → fall through to re-capture
@@ -387,27 +422,40 @@ export async function runPipeline(contract, {
 
     // --- Verify output ---
     // Note: verify() returns {schema, status, errors} object, not a plain array.
-    // In pipeline mode, we accept 'partial' if the only failures are:
-    //  - dependency_gap for page links (pipeline manages discovery itself)
-    //  - font_load (font stub OK for MVP reference)
-    // Any other failure (missing manifest, corrupt resources, script errors) is fatal.
-    const PIPELINE_ACCEPTABLE_FAILURES = new Set(['dependency_gap', 'font_load']);
+    // In pipeline mode:
+    // - Route dependency gaps (kind === 'page') are tracked and reconciled against final captures
+    // - Font load failures or asset gaps are recorded as errors, blocking TECH_VERIFIED
+    // - File integrity errors (hash mismatch, empty file) reject the capture completely
     let verifyResult = { schema: 1, status: 'failed', errors: ['verify not run'] };
     let captureOk = false;
+    let taskFailures = [];
+
     try {
       verifyResult = verify(captureDir, {});
       if (verifyResult.status === 'complete') {
         captureOk = true;
-      } else if (verifyResult.status === 'failed') {
-        // Check if the manifest itself is readable and partial is due to expected causes
+      } else {
         const manifest = tryReadJSON(path.join(captureDir, 'manifest.json'));
         if (manifest?.status === 'partial' || manifest?.status === 'complete') {
-          const nonAcceptable = (manifest.failures || []).filter(
-            f => !PIPELINE_ACCEPTABLE_FAILURES.has(f.reason)
+          const integrityErrors = (verifyResult.errors || []).filter(e =>
+            e.includes('hash mismatch') ||
+            e.includes('empty file') ||
+            e.includes('ownership marker') ||
+            e.includes('resource byte counts') ||
+            e.includes('resource content invalid') ||
+            e.includes('capture evidence missing')
           );
-          // Also check that the main page capture evidence exists
-          if (nonAcceptable.length === 0 && Array.isArray(manifest.captures) && manifest.captures.length > 0) {
-            captureOk = true; // partial but all failures are expected in pipeline context
+
+          if (integrityErrors.length === 0 && Array.isArray(manifest.captures) && manifest.captures.length > 0) {
+            taskFailures = manifest.failures || [];
+            const fatalFailures = taskFailures.filter(f =>
+              !(f.reason === 'dependency_gap' && f.kind === 'page') &&
+              f.reason !== 'font_load' &&
+              f.kind !== 'asset'
+            );
+            if (fatalFailures.length === 0) {
+              captureOk = true;
+            }
           }
         }
       }
@@ -421,6 +469,17 @@ export async function runPipeline(contract, {
       tasksThisRun++;
       saveCheckpoint(cpPath, buildCheckpoint({ runId, seed, pageOrigins, assetOrigins, configVer, captures, errors }));
       continue;
+    }
+
+    // Record specific partial gaps
+    for (const f of taskFailures) {
+      if (f.reason === 'dependency_gap' && f.kind === 'page') {
+        pendingPageGaps.push({ fromUrl: url, targetUrl: f.url });
+      } else if (f.reason === 'font_load') {
+        errors.push({ url, stateId, viewport, error: 'font_load', detail: f });
+      } else if (f.kind === 'asset') {
+        errors.push({ url, stateId, viewport, error: 'asset_gap', detail: f });
+      }
     }
 
     // --- Discover linked pages from routes.json and enqueue ---
@@ -440,8 +499,10 @@ export async function runPipeline(contract, {
           await queue.enqueue({ url: discoveredUrl, stateId: 'default', viewport: vpStr, configVer });
           // Enqueue matching named states for this discovered page
           for (const stateDef of (states || [])) {
-            const statePathname = new URL(discoveredUrl).pathname;
-            if (!stateDef.path || stateDef.path === statePathname) {
+            const u = new URL(discoveredUrl);
+            const routePath = u.pathname + (u.search || '');
+            const matches = !stateDef.path || stateDef.path === routePath || (!u.search && stateDef.path === u.pathname);
+            if (matches) {
               const sid = stateDef.state_id || stateDef.name;
               if (sid) await queue.enqueue({ url: discoveredUrl, stateId: sid, viewport: vpStr, configVer });
             }
@@ -475,6 +536,7 @@ export async function runPipeline(contract, {
     approval,
     contract,
     captures,
+    pendingPageGaps,
   });
 
   const result = {
@@ -518,7 +580,7 @@ function buildCheckpoint({ runId, seed, pageOrigins, assetOrigins, configVer, ca
   return { runId, seed, pageOrigins, assetOrigins, configVer, captures, errors, startedAt: new Date().toISOString() };
 }
 
-function computeStatus({ stats, errors, challengeBlocked, require_interactions_confirmed, interactions_pending, approval, contract, captures }) {
+export function computeStatus({ stats, errors, challengeBlocked, require_interactions_confirmed, interactions_pending, approval, contract, captures, pendingPageGaps = [] }) {
   if (challengeBlocked) return STATUS.CHALLENGE_BLOCKED;
 
   if (stats.pending > 0) return STATUS.BUDGET_PAUSED;
@@ -537,7 +599,52 @@ function computeStatus({ stats, errors, challengeBlocked, require_interactions_c
     }
   }
 
-  if (errors.some(e => e.error === 'verify_failed')) return STATUS.EVIDENCE_INCOMPLETE;
+  // Check required states & pages across each required viewport
+  const contractViewports = contract?.viewports || [];
+  for (const vp of contractViewports) {
+    const vpStr = `${vp.width}x${vp.height}`;
+    for (const req of requiredPages) {
+      if (!captures.some(c => (c.url === req || c.url.endsWith(req)) && c.viewport === vpStr)) {
+        return STATUS.EVIDENCE_INCOMPLETE;
+      }
+    }
+    for (const stateId of requiredStates) {
+      if (!captures.some(c => c.stateId === stateId && c.viewport === vpStr)) {
+        return STATUS.EVIDENCE_INCOMPLETE;
+      }
+    }
+  }
+
+  // Reconcile pending page dependency gaps:
+  // "页面任务尚未执行可以暂存为pending并继续采集，但最终要按实际已保存路由核销缺口。不能将所有dependency_gap永久豁免。"
+  const capturedUrls = new Set(captures.map(c => {
+    try {
+      const u = new URL(c.url);
+      return u.pathname + u.search;
+    } catch {
+      return c.url;
+    }
+  }));
+  for (const c of captures) capturedUrls.add(c.url);
+
+  const unfulfilledPageGaps = pendingPageGaps.filter(g => {
+    try {
+      const u = new URL(g.targetUrl);
+      const pathAndSearch = u.pathname + u.search;
+      return !capturedUrls.has(g.targetUrl) && !capturedUrls.has(pathAndSearch);
+    } catch {
+      return !capturedUrls.has(g.targetUrl);
+    }
+  });
+
+  if (unfulfilledPageGaps.length > 0) {
+    return STATUS.EVIDENCE_INCOMPLETE;
+  }
+
+  // "必要字体失败或文件损坏：保留已有可读产物，预览显示PARTIAL和具体缺口；不得升级为TECH_VERIFIED或REFERENCE_READY。"
+  if (errors.some(e => e.error === 'verify_failed' || e.error === 'font_load' || e.error === 'asset_gap' || e.error === 'corrupt_output')) {
+    return STATUS.EVIDENCE_INCOMPLETE;
+  }
 
   if (require_interactions_confirmed && interactions_pending.length > 0) {
     return STATUS.INTERACTIONS_PENDING;

@@ -32,12 +32,14 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   runPipeline,
   loadCheckpoint,
   checkpointPath,
   assertResumeCompatible,
+  computeStatus,
   STATUS,
   PIPELINE_SCHEMA,
 } from '../../tools/pipeline/pipeline.mjs';
@@ -69,6 +71,8 @@ function startFixtureServer() {
     '.js': 'application/javascript; charset=utf-8',
     '.svg': 'image/svg+xml',
     '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.ttf': 'font/ttf',
     '.json': 'application/json',
     '.png': 'image/png',
   };
@@ -531,6 +535,119 @@ test('N5: Pipeline without approval → cannot be REFERENCE_READY', { timeout: 1
     [STATUS.TECH_VERIFIED, STATUS.EVIDENCE_INCOMPLETE, STATUS.BUDGET_PAUSED].includes(result.status),
     `N5: Without approval, expected TECH_VERIFIED or incomplete, got ${result.status}`
   );
+});
+
+test('N6: Missing or invalid font/state cannot produce TECH_VERIFIED or REFERENCE_READY', () => {
+  // Case 1: font_load failure recorded in errors -> must be EVIDENCE_INCOMPLETE
+  const statusWithFontError = computeStatus({
+    stats: { pending: 0 },
+    errors: [{ error: 'font_load', file: 'PipelineFixture-Regular.ttf' }],
+    challengeBlocked: false,
+    require_interactions_confirmed: false,
+    interactions_pending: [],
+    approval: { approved: true },
+    contract: { required_pages: ['http://127.0.0.1:9999/'], required_states: ['default'] },
+    captures: [{ url: 'http://127.0.0.1:9999/', stateId: 'default' }],
+  });
+  assert.equal(statusWithFontError, STATUS.EVIDENCE_INCOMPLETE, 'N6: font_load error must produce EVIDENCE_INCOMPLETE');
+  assert.notEqual(statusWithFontError, STATUS.TECH_VERIFIED, 'N6: font_load error must not be TECH_VERIFIED');
+  assert.notEqual(statusWithFontError, STATUS.REFERENCE_READY, 'N6: font_load error must not be REFERENCE_READY');
+
+  // Case 2: Required state missing from captures -> must be EVIDENCE_INCOMPLETE
+  const statusMissingState = computeStatus({
+    stats: { pending: 0 },
+    errors: [],
+    challengeBlocked: false,
+    require_interactions_confirmed: false,
+    interactions_pending: [],
+    approval: { approved: true },
+    contract: { required_pages: ['http://127.0.0.1:9999/'], required_states: ['required-font-state'] },
+    captures: [{ url: 'http://127.0.0.1:9999/', stateId: 'default' }],
+  });
+  assert.equal(statusMissingState, STATUS.EVIDENCE_INCOMPLETE, 'N6: missing required state must produce EVIDENCE_INCOMPLETE');
+});
+
+test('N7: Missing a required mobile state cannot pass admission gate', () => {
+  const contract = {
+    required_pages: ['http://127.0.0.1:9999/'],
+    required_states: ['mobile-drawer-open'],
+    viewports: [
+      { width: 1440, height: 1000 },
+      { width: 390, height: 844 },
+    ],
+  };
+
+  // State was only captured on desktop viewport, mobile viewport was omitted
+  const capturesDesktopOnly = [
+    { url: 'http://127.0.0.1:9999/', stateId: 'mobile-drawer-open', viewport: '1440x1000' },
+  ];
+
+  const status = computeStatus({
+    stats: { pending: 0 },
+    errors: [],
+    challengeBlocked: false,
+    require_interactions_confirmed: false,
+    interactions_pending: [],
+    approval: { approved: true },
+    contract,
+    captures: capturesDesktopOnly,
+  });
+
+  assert.equal(status, STATUS.EVIDENCE_INCOMPLETE, 'N7: Missing required mobile state capture must yield EVIDENCE_INCOMPLETE');
+  assert.notEqual(status, STATUS.TECH_VERIFIED, 'N7: Must not pass gate as TECH_VERIFIED');
+  assert.notEqual(status, STATUS.REFERENCE_READY, 'N7: Must not pass gate as REFERENCE_READY');
+});
+
+test('N8: Corrupted resource file on resume is detected and rejected', async (t) => {
+  const { verify } = await import('../../tools/downloader/verify.mjs');
+  const workDir = testWorkDir('n8-corrupt');
+  t.after(() => fs.rmSync(workDir, { recursive: true, force: true }));
+
+  const SCHEMA = 'replica-downloader/v0.1';
+  const captureDir = path.join(workDir, 'capture');
+  fs.mkdirSync(path.join(captureDir, 'site/objects'), { recursive: true });
+  fs.mkdirSync(path.join(captureDir, 'raw'), { recursive: true });
+  fs.mkdirSync(path.join(captureDir, 'reports'), { recursive: true });
+  fs.writeFileSync(path.join(captureDir, '.downloader-owned'), SCHEMA + '\n');
+
+  const rawPath = 'raw/test.bin';
+  const localPath = 'site/objects/test.css';
+  const goodContent = Buffer.from('body { color: red; }');
+  const goodSha = crypto.createHash('sha256').update(goodContent).digest('hex');
+
+  // Corrupt local file with different content
+  const badContent = Buffer.from('body { color: blue; }');
+
+  fs.writeFileSync(path.join(captureDir, rawPath), goodContent);
+  fs.writeFileSync(path.join(captureDir, localPath), badContent); // CORRUPTED
+
+  const manifest = {
+    schema: SCHEMA, run_id: 'n8-test-run-id-0000001',
+    status: 'complete',
+    failures: [], captures: [{ url: 'http://127.0.0.1:1/', viewport: { width: 1440, height: 1000 }, state: 'default' }],
+    counts: { discovered: 1, visited: 1, excluded: 0, failed: 0, pending: 0, resources: 1, saved_resources: 1, failed_resources: 0 },
+    policy: { url: 'http://127.0.0.1:1/', pageOrigins: ['http://127.0.0.1:1'], viewports: [{ width: 1440, height: 1000 }], states: [] },
+    policy_sha256: '',
+    engine: { browser: 'chromium', playwright: '1.0', adapter_sha256: 'a'.repeat(64) },
+  };
+  fs.writeFileSync(path.join(captureDir, 'manifest.json'), JSON.stringify(manifest));
+  fs.writeFileSync(path.join(captureDir, 'reports', 'download.json'), JSON.stringify({
+    schema: 1, run_id: manifest.run_id, status: 'complete', failures: [], counts: manifest.counts
+  }));
+  fs.writeFileSync(path.join(captureDir, 'routes.json'), JSON.stringify({ schema: 1, routes: [{ url: 'http://127.0.0.1:1/', from: [], status: 'visited' }] }));
+  fs.writeFileSync(path.join(captureDir, 'resources.json'), JSON.stringify({
+    schema: 1,
+    resources: [{
+      method: 'GET', mime: 'text/css', response_url: 'http://127.0.0.1:1/test.css', url: 'http://127.0.0.1:1/test.css',
+      status: 'saved', bytes: goodContent.length, local_bytes: goodContent.length,
+      raw_path: rawPath, local_path: localPath, raw_sha256: goodSha, local_sha256: goodSha,
+      references: [{ from: 'test', kind: 'asset' }], observations: ['style']
+    }]
+  }));
+
+  const verifyResult = verify(captureDir, {});
+  assert.equal(verifyResult.status, 'failed', 'N8: Verify must fail on hash mismatch');
+  assert.ok(verifyResult.errors.some(e => e.includes('hash mismatch')), 'N8: Error must mention hash mismatch');
 });
 
 // ============================================================

@@ -40,7 +40,7 @@ jobs:
         run: node --test tests/pipeline/pipeline.test.mjs --test-name-pattern "P[0-9]"
         timeout-minutes: 12
 
-      - name: Pipeline negative integration tests (N1-N5)
+      - name: Pipeline negative integration tests (N1-N8)
         run: node --test tests/pipeline/pipeline.test.mjs --test-name-pattern "N[0-9]"
         timeout-minutes: 8
 
