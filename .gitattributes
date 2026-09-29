@@ -1,5 +1,8 @@
 # Keep fixture hashes identical on Windows and Linux CI.
 tests/fixtures/owned-site/** text eol=lf
+*.ttf binary
+*.woff binary
+*.woff2 binary
 scripts/fixture_site.py text eol=lf
 
 # These scoped directories contain source/text only, not captured binaries.

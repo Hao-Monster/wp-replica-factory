@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import { SCHEMA, sha, safeFile, noLinks, readJSON, coreDigest, bodyProblem } from './core.mjs';
+import { verifyStateHandoff } from './state-handoff.mjs';
+import { readPng, comparePixels } from '../visual-evaluator/image-diff.mjs';
 
-export function verify(root,{requirePreview=false}={}) {
+export function verify(root,{requirePreview=false,requireHandoff=false}={}) {
   const errors=[];
   const check=(condition,message)=>{if(!condition)errors.push(message);};
   try {
@@ -46,6 +48,13 @@ export function verify(root,{requirePreview=false}={}) {
       for(const v of m.policy.viewports) {
         const states=['default',...m.policy.states.filter(s=>!s.path||s.path===new URL(r.url).pathname).map(s=>s.name)];
         for(const state of states)check(m.captures.some(c=>c.url===r.url&&c.viewport.width===v.width&&c.viewport.height===v.height&&c.state===state),'missing route/viewport/state evidence');
+      }
+    }
+    if (Array.isArray(m.policy?.required_states) && m.policy.required_states.length > 0) {
+      for (const req of m.policy.required_states) {
+        for (const v of m.policy.viewports) {
+          check(m.captures.some(c => c.viewport.width === v.width && c.viewport.height === v.height && c.state === req), `missing required state ${req} for viewport ${v.width}x${v.height}`);
+        }
       }
     }
     for(const c of m.captures) {
@@ -108,6 +117,10 @@ export function verify(root,{requirePreview=false}={}) {
       check(p.requests?.every(r=>r.method==='GET'&&new URL(r.url).origin===p.origin),'preview outbound request');
       check(p.checks?.every(c=>c.assertions.every(a=>a.passed===true&&a.actual&&a.expected)),'preview failed assertion');
     }
+    const handoffCheck = verifyStateHandoff(root, { requireHandoff: Boolean(requireHandoff || m.policy?.required_states) });
+    if (handoffCheck.status === 'failed') {
+      for (const err of handoffCheck.errors || []) check(false, `handoff: ${err}`);
+    }
   } catch(error) {errors.push(error.message);}
   return {schema:1,status:errors.length?'failed':'complete',errors};
 }
@@ -118,10 +131,62 @@ export function compareRuns(first,second) {
   const one=readJSON(first,'manifest.json'),two=readJSON(second,'manifest.json');
   const samePolicy=one.policy_sha256===two.policy_sha256;
   const sameRuntime=one.engine.browser===two.engine.browser&&one.engine.playwright===two.engine.playwright&&one.engine.adapter_sha256===two.engine.adapter_sha256;
-  const equal=one.core_sha256===two.core_sha256&&samePolicy&&sameRuntime;
+  let equal=one.core_sha256===two.core_sha256&&samePolicy&&sameRuntime;
   const aResources=readJSON(first,'resources.json').resources,bResources=readJSON(second,'resources.json').resources;
   const aKeys=new Set(aResources.map(r=>JSON.stringify([r.url,r.status,r.raw_sha256]))),bKeys=new Set(bResources.map(r=>JSON.stringify([r.url,r.status,r.raw_sha256])));
-  return {status:equal?'complete':'failed',equal,same_policy:samePolicy,same_runtime:sameRuntime,first_sha256:one.core_sha256,second_sha256:two.core_sha256,metadata_excluded:['run_id','session_id','capture timestamps','HAR timings','observation ordering'],differing:equal?[]:['routes/resources, policy or runtime'],only_first:[...aKeys].filter(k=>!bKeys.has(k)).map(JSON.parse),only_second:[...bKeys].filter(k=>!aKeys.has(k)).map(JSON.parse)};
+  const differing = equal ? [] : ['routes/resources, policy or runtime'];
+
+  const handoffPathA = safeFile(first, 'reports/component-handoff.json');
+  const handoffPathB = safeFile(second, 'reports/component-handoff.json');
+  const stateDifferences = [];
+  if (fs.existsSync(handoffPathA) && fs.existsSync(handoffPathB)) {
+    const handoffA = readJSON(first, 'reports/component-handoff.json');
+    const handoffB = readJSON(second, 'reports/component-handoff.json');
+    const statesA = handoffA.states || [];
+    const statesB = handoffB.states || [];
+    for (const sA of statesA) {
+      const sB = statesB.find(s => s.case_key === sA.case_key);
+      if (!sB) {
+        stateDifferences.push(`missing_case_in_second:${sA.case_key}`);
+        equal = false;
+        continue;
+      }
+      if (sA.screenshot && sB.screenshot) {
+        try {
+          const imgA = readPng(safeFile(first, sA.screenshot));
+          const imgB = readPng(safeFile(second, sB.screenshot));
+          const pxDiff = comparePixels(imgA, imgB);
+          if (pxDiff.different_pixels > 0) {
+            stateDifferences.push(`screenshot_pixel_diff:${sA.case_key}:${pxDiff.different_pixels}`);
+            equal = false;
+          }
+        } catch {
+          const shaA = sha(fs.readFileSync(safeFile(first, sA.screenshot)));
+          const shaB = sha(fs.readFileSync(safeFile(second, sB.screenshot)));
+          if (shaA !== shaB) {
+            stateDifferences.push(`screenshot_mismatch:${sA.case_key}`);
+            equal = false;
+          }
+        }
+      }
+      if (sA.rendered_html && sB.rendered_html) {
+        const htmlA = fs.readFileSync(safeFile(first, sA.rendered_html), 'utf8').trim();
+        const htmlB = fs.readFileSync(safeFile(second, sB.rendered_html), 'utf8').trim();
+        if (htmlA !== htmlB) {
+          stateDifferences.push(`dom_mismatch:${sA.case_key}`);
+          equal = false;
+        }
+      }
+      if (Boolean(sA.assertions_verified) !== Boolean(sB.assertions_verified)) {
+        stateDifferences.push(`assertion_verified_mismatch:${sA.case_key}`);
+        equal = false;
+      }
+    }
+  }
+  if (stateDifferences.length > 0) {
+    differing.push(...stateDifferences);
+  }
+  return {status:equal?'complete':'failed',equal,same_policy:samePolicy,same_runtime:sameRuntime,first_sha256:one.core_sha256,second_sha256:two.core_sha256,metadata_excluded:['run_id','session_id','capture timestamps','HAR timings','observation ordering'],differing,state_differences:stateDifferences,only_first:[...aKeys].filter(k=>!bKeys.has(k)).map(JSON.parse),only_second:[...bKeys].filter(k=>!aKeys.has(k)).map(JSON.parse)};
 }
 
 // A child exit code is not acceptance. This same function is used by the real

@@ -12,6 +12,7 @@ import { scrollThroughPage } from './vendor/open-design/mirror-site.mjs';
 import { captureResponses } from './vendor/open-design/network-capture.mjs';
 import { localize } from './localize.mjs';
 import { detectChallenge } from './challenge-detector.mjs';
+import { executeStateActionsWithAssertions, inspectStateComponentResources, buildComponentHandoffReport } from './state-handoff.mjs';
 
 export async function download(input,output,options={}) {
   const policy=policyFor(input);
@@ -22,7 +23,7 @@ export async function download(input,output,options={}) {
   const root=newOutput(output);
   const run_id=crypto.randomUUID(), session_id=crypto.randomUUID(), started_at=new Date().toISOString();
   const manifest={schema:SCHEMA,run_id,session_id,started_at,engine:{name:'OpenDesign web-clone selective adapter',version:'0.1.0',upstream:'1b47e60bd46641469fcd8b69c496c4e3a548bc28',playwright:playwrightVersion,node:process.version,os:os.platform(),browser:null},policy,policy_sha256:sha(json(policy)),status:'failed',mirror_mode:'original-html-and-client-scripts',limitations:['authorized-public MVP supports HTTPS, one page origin, explicit asset origins and GET/HEAD only','no automatic interaction discovery','hash routes, iframe, Shadow DOM, Canvas and server-side business state are not generalized','responsive candidates not requested by configured viewports are reported; no automatic supplemental GET','conflicting response variants are retained but default replay selects the first and marks partial'],failures:[],har:{enabled:policy.har,session_id,sensitive:true,uploaded:false}};
-  const routes=[],resources=[],captures=[],gaps=[],warnings=[],networkFailures=[],networkEvents=[],pageRuntimeErrors=[];
+  const routes=[],resources=[],captures=[],gaps=[],warnings=[],networkFailures=[],networkEvents=[],pageRuntimeErrors=[],stateResourceInventories=[];
   let challengeResult={detected:false,kind:null,vendor:null,confidence:'none',signals:[]};
   manifest.engine.adapter_sha256=adapterFingerprint();
   const byKey=new Map(), routeMap=new Map();
@@ -103,16 +104,13 @@ export async function download(input,output,options={}) {
             }));
             const candidate=detectChallenge({url:route.url,status:response.status(),headers:await response.allHeaders(),title:await page.title(),body:challenge.html+' '+challenge.text,pageRuntimeErrors:pageRuntimeErrors.filter(e=>e.route===route.url),resources});
             if(candidate.detected) { challengeResult=candidate; throw new Error('challenge_detected'); }
-            for(const action of state.actions) {
-              if(action.type==='scroll') {
-                if(action.selector) await page.locator(action.selector).scrollIntoViewIfNeeded({timeout:remaining()});
-                else await page.evaluate(y=>window.scrollTo(0,y),Number(action.y)||0);
-              } else await page.locator(action.selector)[action.type]({timeout:remaining()});
-              await page.waitForLoadState('networkidle',{timeout:remaining()});
-            }
-            const scroll=await scrollThroughPage(page,policy,deadline);
-            await page.waitForLoadState('networkidle',{timeout:remaining()});
-            await page.waitForFunction(()=>document.fonts.status==='loaded',null,{timeout:remaining()});
+            await executeStateActionsWithAssertions(page, state, remaining, policy);
+            await page.waitForLoadState('networkidle',{timeout:remaining()}).catch(()=>{});
+            const scroll = (state.actions?.length && !state.actions.some(a=>a.type==='scroll'))
+              ? { steps: 0, final_y: 0, scroll_height: 0 }
+              : await scrollThroughPage(page,policy,deadline);
+            await page.waitForLoadState('networkidle',{timeout:remaining()}).catch(()=>{});
+            await page.waitForFunction(()=>document.fonts.status==='loaded',null,{timeout:remaining()}).catch(()=>{});
             const links=await collectPage(page), signals=await collectSignals(page);
             const extra=await page.evaluate(()=>({images:[...document.images].map(img=>({src:img.src,currentSrc:img.currentSrc,srcset:img.srcset,decoded:img.complete&&img.naturalWidth>0})),fonts:[...document.fonts].map(f=>({family:f.family,status:f.status})),dynamicStyles:[...document.querySelectorAll('style')].map(s=>s.textContent),styleSheets:[...document.styleSheets].map(s=>{try{return {href:s.href,rules:[...s.cssRules].map(r=>r.cssText)}}catch{return {href:s.href,unreadable:true}}}),shadowHosts:[...document.querySelectorAll('*')].filter(e=>e.shadowRoot).length,iframes:document.querySelectorAll('iframe').length,canvas:document.querySelectorAll('canvas').length}));
             if(extra.images.some(i=>!i.decoded)) fail({reason:'image_decode',route:route.url,capture_id});
@@ -131,6 +129,8 @@ export async function download(input,output,options={}) {
             const evidence={capture_id,url:route.url,final_url:route.final_url,viewport,state:state.name,files:{}};
             for(const name of ['rendered.html','signals.json','screenshot.png']) {const rel=prefix+'/'+name;evidence.files[name]={path:rel,sha256:sha(fs.readFileSync(safeFile(root,rel)))};}
             captures.push(evidence);
+            const componentSnapshot=await inspectStateComponentResources(page,state,resources,root,{capture_id,route:route.url,viewport,policy});
+            stateResourceInventories.push(componentSnapshot);
             await listener.drain();
           } finally {await page.close();}
         }
@@ -183,6 +183,21 @@ export async function download(input,output,options={}) {
   put(root,'reports/page-runtime-errors.json',json({schema:1,errors:manifest.pageRuntimeErrors}));
   if(challengeResult.detected) put(root,'reports/challenge.json',json({schema:1,detected:true,kind:challengeResult.kind,vendor:challengeResult.vendor,confidence:challengeResult.confidence,signals:challengeResult.signals,url:sanitizeUrl(policy.url,policy.sensitiveQueryKeys),timestamp:new Date().toISOString(),recommended_action:'interactive_browser_recon'}));
   manifest.captures=captures;
+  if(policy.required_states?.length || policy.stateContract || policy.component) {
+    const handoffReport = buildComponentHandoffReport(root, manifest, captures, stateResourceInventories, resources);
+    if(handoffReport.status !== 'complete') {
+      fail({reason:'state_handoff_incomplete',missing_cases:handoffReport.counts.missing_cases,missing_files:handoffReport.counts.missing_files});
+    }
+  }
+  if(Array.isArray(policy.required_states) && policy.required_states.length > 0) {
+    for(const req of policy.required_states) {
+      for(const vp of policy.viewports) {
+        if(!captures.some(c=>c.state===req && c.viewport.width===vp.width && c.viewport.height===vp.height)) {
+          fail({reason:'missing_required_state',state:req,viewport:vp});
+        }
+      }
+    }
+  }
   manifest.counts={discovered:routes.length,visited:routes.filter(r=>r.status==='visited').length,excluded:routes.filter(r=>r.status==='excluded').length,failed:routes.filter(r=>r.status==='failed').length,pending:routes.filter(r=>r.status==='pending').length,resources:resources.length,saved_resources:resources.filter(r=>r.status==='saved').length,failed_resources:resources.filter(r=>r.status==='failed').length,by_kind:{},raw_bytes:totalBytes};
   for(const r of resources.filter(r=>r.status==='saved')) manifest.counts.by_kind[r.kind]=(manifest.counts.by_kind[r.kind]||0)+1;
   const auth=manifest.failures.some(f=>/authorization_or_challenge|http_401|http_403/.test(f.reason));

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WP Replica Factory – 下载管理器</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+    --accent: #6366f1; --accent2: #818cf8;
+    --green: #22c55e; --yellow: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+    --text: #e2e8f0; --muted: #64748b; --border: #2d3748;
+    --radius: 10px; --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Header */
+  header {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  header .subtitle { font-size: 12px; color: var(--accent2); margin-top: 2px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 99px; background: rgba(99,102,241,0.2); color: var(--accent2);
+    border: 1px solid rgba(99,102,241,0.3);
+  }
+
+  /* Layout */
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+  .grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+
+  /* New crawl form */
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  input[type="text"], input[type="number"] {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 9px 12px; color: var(--text); font-size: 14px;
+    transition: border-color 0.2s;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: 6px; border: none;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 5px; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); }
+  .btn-danger { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  .btn-success { background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+  .btn-success:hover { background: rgba(34,197,94,0.25); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-full { width: 100%; justify-content: center; }
+
+  /* Status pill */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 99px;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .s-running .status-dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  .s-running { background: rgba(99,102,241,0.15); color: var(--accent2); border: 1px solid rgba(99,102,241,0.3); }
+  .s-paused .status-dot { background: var(--yellow); }
+  .s-paused { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3); }
+  .s-complete .status-dot { background: var(--green); }
+  .s-complete { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .s-failed .status-dot { background: var(--red); }
+  .s-failed { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .s-blocked .status-dot { background: var(--red); }
+  .s-blocked { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .s-idle .status-dot { background: var(--muted); }
+  .s-idle { background: rgba(100,116,139,0.15); color: var(--muted); border: 1px solid rgba(100,116,139,0.3); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Stat cards */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-box { background: var(--surface2); border-radius: 8px; padding: 12px; text-align: center; }
+  .stat-number { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+  .stat-label { font-size: 11px; color: var(--muted); }
+  .c-green { color: var(--green); } .c-red { color: var(--red); }
+  .c-blue { color: var(--blue); } .c-yellow { color: var(--yellow); }
+  .c-muted { color: var(--muted); }
+
+  /* Run list */
+  .run-list { display: flex; flex-direction: column; gap: 10px; }
+  .run-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .run-card:hover { border-color: var(--accent); }
+  .run-card.active-run { border-color: var(--accent); }
+  .run-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .run-domain { font-size: 14px; font-weight: 600; }
+  .run-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .run-mini-stats { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; }
+  .mini-stat { display: flex; align-items: center; gap: 4px; }
+
+  /* Pages table */
+  .pages-section { margin-top: 20px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .section-title { font-size: 14px; font-weight: 600; }
+  .filter-tabs { display: flex; gap: 4px; }
+  .filter-tab {
+    padding: 4px 10px; border-radius: 5px; font-size: 12px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    transition: all 0.15s;
+  }
+  .filter-tab.active, .filter-tab:hover { border-color: var(--accent); color: var(--accent2); background: rgba(99,102,241,0.1); }
+
+  .pages-table { width: 100%; border-collapse: collapse; }
+  .pages-table th {
+    text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .pages-table td { padding: 8px 10px; border-bottom: 1px solid rgba(45,55,72,0.5); vertical-align: middle; }
+  .pages-table tr:hover td { background: var(--surface2); }
+  .page-url { font-size: 12px; color: var(--text); word-break: break-all; max-width: 400px; }
+  .page-title { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .page-error { font-size: 11px; color: var(--red); margin-top: 2px; }
+  .view-link {
+    font-size: 11px; color: var(--accent2); white-space: nowrap;
+    padding: 3px 8px; border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 4px; display: inline-block;
+  }
+  .view-link:hover { background: rgba(99,102,241,0.1); }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+  .empty-desc { font-size: 12px; }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* Action bar */
+  .action-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .run-title { font-size: 18px; font-weight: 700; }
+  .run-subtitle { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  /* Notification */
+  #notif {
+    position: fixed; bottom: 20px; right: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 18px;
+    font-size: 13px; box-shadow: var(--shadow);
+    transform: translateY(80px); transition: transform 0.3s;
+    z-index: 9999;
+  }
+  #notif.show { transform: translateY(0); }
+  #notif.notif-ok { border-color: var(--green); color: var(--green); }
+  #notif.notif-err { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🕷 WP Replica Factory</h1>
+    <div class="subtitle">下载管理器 · 仅本机可用</div>
+  </div>
+  <div class="badge">v0.1 · E-DL</div>
+</header>
+
+<div class="container">
+  <div class="grid">
+    <!-- Left: New crawl form + Run list -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">新建整站下载</div>
+        <div class="form-group">
+          <label for="domain-input">目标域名（只需填域名，自动处理HTTPS）</label>
+          <input type="text" id="domain-input" placeholder="example.com" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="form-group">
+          <label for="max-pages">最大页数（0 = 整站无限制）</label>
+          <input type="number" id="max-pages" value="0" min="0" max="100000">
+        </div>
+        <button class="btn btn-primary btn-full" id="start-btn" onclick="startCrawl()">
+          ▶ 开始下载
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">任务列表</div>
+        <div id="run-list" class="run-list">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <div class="empty-title">暂无任务</div>
+            <div class="empty-desc">输入域名后点击「开始下载」</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Run detail -->
+    <div id="run-detail">
+      <div class="card">
+        <div class="empty-state">
+          <div class="empty-icon">🌐</div>
+          <div class="empty-title">选择一个任务查看详情</div>
+          <div class="empty-desc">点击左侧任务查看进度和已保存页面</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="notif"></div>
+
+<script>
+'use strict';
+
+let currentRunId = null;
+let pollTimer = null;
+let allRuns = [];
+let currentPageFilter = 'all';
+
+// ─── Notify ──────────────────────────────────────────────────────────────
+
+function notify(msg, type) {
+  const el = document.getElementById('notif');
+  el.textContent = msg;
+  el.className = 'show ' + (type === 'err' ? 'notif-err' : 'notif-ok');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(function() { el.className = ''; }, 3000);
+}
+
+// ─── API helpers ─────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const opts = { method: method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+// ─── Start crawl ─────────────────────────────────────────────────────────
+
+async function startCrawl() {
+  const domain = document.getElementById('domain-input').value.trim();
+  const maxPages = parseInt(document.getElementById('max-pages').value) || 0;
+  if (!domain) { notify('请先填写域名', 'err'); return; }
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  try {
+    const res = await api('POST', '/api/runs', { domain: domain, maxPages: maxPages });
+    if (res.error) { notify(res.error, 'err'); return; }
+    notify('✓ 任务已启动：' + domain);
+    document.getElementById('domain-input').value = '';
+    currentRunId = res.runId;
+    await loadRuns();
+    showRun(res.runId);
+  } catch (e) {
+    notify('启动失败：' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── Load run list ────────────────────────────────────────────────────────
+
+async function loadRuns() {
+  try {
+    const res = await api('GET', '/api/runs');
+    allRuns = res.runs || [];
+    renderRunList();
+  } catch { /* ignore */ }
+}
+
+function renderRunList() {
+  const container = document.getElementById('run-list');
+  if (!allRuns.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">暂无任务</div><div class="empty-desc">输入域名后点击「开始下载」</div></div>';
+    return;
+  }
+  container.innerHTML = allRuns.map(function(run) {
+    const stats = run.stats || {};
+    const isActive = run.active;
+    const startTime = run.startedAt ? new Date(run.startedAt).toLocaleString('zh-CN') : '—';
+    return '<div class="run-card' + (run.runId === currentRunId ? ' active-run' : '') + '" onclick="showRun(\'' + run.runId + '\')" id="run-card-' + run.runId + '">'
+      + '<div class="run-card-header">'
+      + '<div><div class="run-domain">' + esc(run.domain) + '</div><div class="run-meta">' + startTime + (isActive ? ' · 活跃' : '') + '</div></div>'
+      + statusPill(run.status)
+      + '</div>'
+      + '<div class="run-mini-stats">'
+      + '<div class="mini-stat c-green">✓ ' + (stats.saved || 0) + ' 已保存</div>'
+      + '<div class="mini-stat c-muted">🔍 ' + ((stats.queued || 0)) + ' 队列</div>'
+      + '<div class="mini-stat c-red">✗ ' + (stats.failed || 0) + ' 失败</div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+// ─── Show run detail ──────────────────────────────────────────────────────
+
+async function showRun(runId) {
+  currentRunId = runId;
+  renderRunList();
+  clearTimeout(pollTimer);
+  await loadRunDetail(runId);
+}
+
+async function loadRunDetail(runId) {
+  let data;
+  try { data = await api('GET', '/api/runs/' + runId); } catch { return; }
+  renderRunDetail(data);
+
+  // Poll if running
+  if (data.status === 'running' || data.status === 'idle') {
+    pollTimer = setTimeout(function() { loadRunDetail(runId); }, 2000);
+  }
+  // Update run card in list
+  const existing = allRuns.find(function(r) { return r.runId === runId; });
+  if (existing) {
+    Object.assign(existing, { status: data.status, stats: data.stats });
+    renderRunList();
+  } else {
+    allRuns.unshift({ runId: data.runId, domain: data.domain, status: data.status, stats: data.stats, startedAt: data.startedAt, active: data.active });
+    renderRunList();
+  }
+}
+
+function renderRunDetail(data) {
+  const stats = data.stats || {};
+  const pages = data.pages || {};
+  const isRunning = data.status === 'running' || data.status === 'idle';
+  const isPaused = data.status === 'paused' || data.status === 'complete' || data.status === 'blocked' || data.status === 'exhausted';
+
+  let pageArr = Object.entries(pages).map(function(e) { return Object.assign({ url: e[0] }, e[1]); });
+  if (currentPageFilter !== 'all') {
+    pageArr = pageArr.filter(function(p) { return p.status === currentPageFilter; });
+  }
+
+  const saved = pageArr.filter(function(p) { return p.status === 'saved'; }).length;
+  const running = pageArr.filter(function(p) { return p.status === 'running'; }).length;
+  const queued = pageArr.filter(function(p) { return p.status === 'queued'; }).length;
+  const failed = pageArr.filter(function(p) { return p.status === 'failed' || p.status === 'blocked'; }).length;
+
+  const totalAll = Object.keys(pages).length;
+  const totalSaved = Object.values(pages).filter(function(p) { return p.status === 'saved'; }).length;
+  const totalQueued = Object.values(pages).filter(function(p) { return p.status === 'queued'; }).length;
+  const totalFailed = Object.values(pages).filter(function(p) { return p.status === 'failed' || p.status === 'blocked'; }).length;
+
+  const html = '<div class="card">'
+    + '<div class="action-bar">'
+    + '<div><div class="run-title">' + esc(data.domain) + '</div><div class="run-subtitle">ID: ' + data.runId + '</div></div>'
+    + statusPill(data.status)
+    + '<div style="flex:1"></div>'
+    + (isRunning ? '<button class="btn btn-sm btn-danger" onclick="pauseRun(\'' + data.runId + '\')">⏸ 暂停</button>' : '')
+    + (isPaused && data.status !== 'complete' ? '<button class="btn btn-sm btn-success" onclick="resumeRun(\'' + data.runId + '\')">▶ 继续</button>' : '')
+    + '</div>'
+    + '<div class="stats-grid">'
+    + '<div class="stat-box"><div class="stat-number c-green">' + (stats.saved || 0) + '</div><div class="stat-label">已保存HTML</div></div>'
+    + '<div class="stat-box"><div class="stat-number c-blue">' + (stats.queued || 0) + '</div><div class="stat-label">发现URL</div></div>'
+    + '<div class="stat-box"><div class="stat-number c-red">' + (stats.failed || 0) + '</div><div class="stat-label">失败</div></div>'
+    + '</div>'
+    + '<hr class="divider">'
+    + '<div class="pages-section">'
+    + '<div class="section-header">'
+    + '<div class="section-title">页面明细 <span style="color:var(--muted);font-weight:400">(' + totalAll + ')</span></div>'
+    + '<div class="filter-tabs">'
+    + filterTab('all', '全部', totalAll)
+    + filterTab('saved', '✓ 已保存', totalSaved)
+    + filterTab('queued', '⏳ 队列', totalQueued)
+    + filterTab('running', '⚡ 进行中', running)
+    + filterTab('failed', '✗ 失败', totalFailed)
+    + '</div>'
+    + '</div>'
+    + renderPagesTable(pageArr, data.runId)
+    + '</div>'
+    + '</div>';
+
+  document.getElementById('run-detail').innerHTML = html;
+}
+
+function filterTab(value, label, count) {
+  return '<button class="filter-tab' + (currentPageFilter === value ? ' active' : '') + '" onclick="setFilter(\'' + value + '\')">'
+    + label + (count !== undefined ? ' <span style="opacity:0.7">(' + count + ')</span>' : '') + '</button>';
+}
+
+function setFilter(value) {
+  currentPageFilter = value;
+  if (currentRunId) loadRunDetail(currentRunId);
+}
+
+function renderPagesTable(pageArr, runId) {
+  if (!pageArr.length) {
+    return '<div class="empty-state" style="padding:24px 10px"><div class="empty-icon" style="font-size:28px">📭</div>'
+      + '<div class="empty-title">暂无页面</div><div class="empty-desc">正在下载中...</div></div>';
+  }
+  const rows = pageArr.slice(0, 500).map(function(p) {
+    const captureId = p.captureDir ? p.captureDir.split(/[\/\\]/).pop() : null;
+    const viewLink = (p.status === 'saved' && captureId)
+      ? '<a href="/api/runs/' + esc(runId) + '/pages/' + esc(captureId) + '" target="_blank" rel="noopener" class="view-link">查看</a>'
+      : '<span style="color:var(--muted);font-size:11px">—</span>';
+    const statusBadge = statusPillSmall(p.status);
+    const errorHtml = p.error ? '<div class="page-error">⚠ ' + esc(p.error.slice(0, 100)) + '</div>' : '';
+    return '<tr>'
+      + '<td>' + statusBadge + '</td>'
+      + '<td><div class="page-url">' + esc(p.url) + '</div>'
+      + (p.title ? '<div class="page-title">' + esc(p.title) + '</div>' : '')
+      + errorHtml + '</td>'
+      + '<td>' + viewLink + '</td>'
+      + '</tr>';
+  }).join('');
+  return '<div style="overflow-x:auto"><table class="pages-table"><thead><tr><th>状态</th><th>页面</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>'
+    + (pageArr.length > 500 ? '<div style="text-align:center;padding:10px;color:var(--muted);font-size:12px">仅显示前500条，共' + pageArr.length + '条</div>' : '')
+    + '</div>';
+}
+
+// ─── Pause / Resume ───────────────────────────────────────────────────────
+
+async function pauseRun(runId) {
+  try {
+    await api('POST', '/api/runs/' + runId + '/pause');
+    notify('⏸ 暂停信号已发送');
+    setTimeout(function() { loadRunDetail(runId); }, 500);
+  } catch (e) { notify('暂停失败：' + e.message, 'err'); }
+}
+
+async function resumeRun(runId) {
+  try {
+    await api('POST', '/api/runs/' + runId + '/resume');
+    notify('▶ 正在继续...');
+    setTimeout(function() { loadRunDetail(runId); }, 1000);
+  } catch (e) { notify('继续失败：' + e.message, 'err'); }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function statusPill(status) {
+  const cfg = {
+    running: ['s-running', '⚡ 运行中'],
+    idle: ['s-running', '⚡ 启动中'],
+    paused: ['s-paused', '⏸ 已暂停'],
+    complete: ['s-complete', '✓ 完成'],
+    blocked: ['s-blocked', '⛔ 受阻'],
+    exhausted: ['s-paused', '⏹ 已停止'],
+    failed: ['s-failed', '✗ 失败'],
+  };
+  const [cls, label] = cfg[status] || ['s-idle', status || '未知'];
+  return '<span class="status-pill ' + cls + '"><span class="status-dot"></span>' + label + '</span>';
+}
+
+function statusPillSmall(status) {
+  const cfg = {
+    saved: ['s-complete', '✓'],
+    queued: ['s-idle', '⏳'],
+    running: ['s-running', '⚡'],
+    failed: ['s-failed', '✗'],
+    blocked: ['s-blocked', '⛔'],
+    partial: ['s-paused', '~'],
+  };
+  const [cls, label] = cfg[status] || ['s-idle', status || '?'];
+  return '<span class="status-pill ' + cls + '" style="font-size:10px;padding:2px 6px">' + label + '</span>';
+}
+
+// ─── Init + polling ───────────────────────────────────────────────────────
+
+async function init() {
+  await loadRuns();
+  // Auto-select most recent active run
+  const activeRun = allRuns.find(function(r) { return r.status === 'running'; });
+  if (activeRun) { showRun(activeRun.runId); }
+  // Refresh run list every 5s
+  setInterval(loadRuns, 5000);
+}
+
+// Enter key shortcut
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('domain-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') startCrawl();
+  });
+  init();
+});
+</script>
+</body>
+</html>

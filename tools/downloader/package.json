@@ -9,6 +9,7 @@
     "acceptance": "node ../../tests/downloader/acceptance.mjs"
   },
   "dependencies": {
+    "@crawlee/core": "3.18.1",
     "playwright": "1.55.0",
     "parse5": "7.3.0",
     "postcss": "8.5.6",

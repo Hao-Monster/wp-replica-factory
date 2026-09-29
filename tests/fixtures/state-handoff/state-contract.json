@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "component": "region-selector",
+  "page": "/index.html",
+  "viewports": [
+    {"width": 1440, "height": 1000},
+    {"width": 390, "height": 844}
+  ],
+  "required_states": [
+    "region-closed",
+    "region-open",
+    "language-expanded",
+    "region-closed-again"
+  ],
+  "states": [
+    {
+      "state_id": "region-closed",
+      "name": "region-closed",
+      "path": "/index.html",
+      "preconditions": [],
+      "actions": [],
+      "assertions": [
+        {"selector": "#region-trigger-btn", "visible": true},
+        {"selector": "#region-portal", "visible": false}
+      ]
+    },
+    {
+      "state_id": "region-open",
+      "name": "region-open",
+      "path": "/index.html",
+      "preconditions": [
+        {"selector": "#region-portal", "visible": false}
+      ],
+      "actions": [
+        {"type": "click", "selector": "#region-trigger-btn"}
+      ],
+      "assertions": [
+        {"selector": "#region-portal", "visible": true},
+        {"selector": "#region-portal .region-title", "visible": true, "text": "Select Region"},
+        {"selector": "#region-portal .flag-img", "visible": true},
+        {"selector": "#region-portal #lang-list", "visible": false}
+      ],
+      "required_resources": [
+        {"type": "image", "selector": "#region-portal .flag-img"},
+        {"type": "css-background", "selector": "#region-portal .dialog-header"},
+        {"type": "inline-svg", "selector": "#region-portal .close-icon"}
+      ]
+    },
+    {
+      "state_id": "language-expanded",
+      "name": "language-expanded",
+      "path": "/index.html",
+      "preconditions": [
+        {"selector": "#region-portal", "visible": false}
+      ],
+      "actions": [
+        {"type": "click", "selector": "#region-trigger-btn"},
+        {"type": "click", "selector": "#lang-dropdown-btn"}
+      ],
+      "assertions": [
+        {"selector": "#region-portal", "visible": true},
+        {"selector": "#lang-list", "visible": true},
+        {"selector": "#lang-list .lang-item", "visible": true, "min_count": 2}
+      ],
+      "required_resources": [
+        {"type": "image", "selector": "#region-portal .flag-img"},
+        {"type": "css-background", "selector": "#region-portal .dialog-header"},
+        {"type": "inline-svg", "selector": "#region-portal .close-icon"}
+      ]
+    },
+    {
+      "state_id": "region-closed-again",
+      "name": "region-closed-again",
+      "path": "/index.html",
+      "preconditions": [
+        {"selector": "#region-portal", "visible": false}
+      ],
+      "actions": [
+        {"type": "click", "selector": "#region-trigger-btn"},
+        {"type": "click", "selector": "#region-close-btn"}
+      ],
+      "assertions": [
+        {"selector": "#region-portal", "visible": false},
+        {"selector": "#region-trigger-btn", "visible": true}
+      ],
+      "restores_state": "region-closed"
+    }
+  ]
+}

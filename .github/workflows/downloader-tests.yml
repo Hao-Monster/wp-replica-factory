@@ -38,6 +38,8 @@ jobs:
         run: node tests/downloader/public-mvp.mjs
       - name: Controlled challenge classification and runtime-error isolation
         run: node tests/downloader/challenge.mjs
+      - name: Interactive state completeness and component resource handoff checks
+        run: node tests/downloader/state-handoff.mjs
       - name: Collect only allowlisted owned evidence
         if: always()
         run: python tests/downloader/collect-ci-evidence.py

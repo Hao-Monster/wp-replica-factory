@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline Fixture – About</title>
+  <link rel="stylesheet" href="/assets/pipeline.css">
+  <link rel="preload" href="/assets/dialog-bg.svg" as="image">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a id="nav-home" href="/">Home</a>
+      <a id="nav-catalog" href="/catalog.html">Catalog</a>
+      <a id="nav-about" href="/about.html">About Us</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>About Pipeline Fixtures</h1>
+    <p>This fixture site is used for owned-fixture pipeline acceptance testing.
+       It provides a controlled, self-contained multi-page scenario.</p>
+
+    <section class="about-team">
+      <h2>Validation Coverage</h2>
+      <ul>
+        <li>Multi-page link discovery (home → catalog → about)</li>
+        <li>Query-string preserved page identity (catalog?sale=1)</li>
+        <li>Body-mounted Portal state capture (country selector)</li>
+        <li>Secondary interactive expand (language panel)</li>
+        <li>Lazy-loaded images, inline SVG, CSS backgrounds, web font</li>
+        <li>Dual viewport: 1440×1000 (desktop) and 390×844 (mobile)</li>
+        <li>Interrupt-and-resume pipeline verification</li>
+        <li>Admission gate negative cases</li>
+      </ul>
+    </section>
+
+    <!-- Lazy image on about page -->
+    <img id="about-lazy-img"
+         class="lazy-load"
+         src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23eee'/%3E%3C/svg%3E"
+         data-src="/assets/product-thumb.svg"
+         alt="About page asset">
+  </main>
+
+  <script src="/assets/pipeline.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const img = document.getElementById('about-lazy-img');
+        if (img && img.dataset.src) {
+          img.src = img.dataset.src;
+          img.classList.add('loaded');
+        }
+      }, 60);
+    });
+  </script>
+</body>
+</html>

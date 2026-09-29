@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pipeline Fixture – Catalog</title>
+  <link rel="stylesheet" href="/assets/pipeline.css">
+  <link rel="preload" href="/assets/dialog-bg.svg" as="image">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a id="nav-home" href="/">Home</a>
+      <a id="nav-catalog" href="/catalog.html">Catalog</a>
+      <a id="nav-about" href="/about.html">About Us</a>
+      <a id="nav-catalog-sale" href="/catalog.html?sale=1">Sale Items</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Product Catalog</h1>
+
+    <!-- Filter panel trigger – tests primary interactive state -->
+    <div class="filter-bar">
+      <button id="filter-btn" type="button" aria-expanded="false" aria-controls="filter-panel">
+        Open Filters
+      </button>
+    </div>
+
+    <!-- Primary panel: initially hidden -->
+    <div id="filter-panel" class="panel" style="display:none;" role="region" aria-label="Filters">
+      <h2>Filter Options</h2>
+
+      <!-- Secondary expand trigger inside primary panel -->
+      <button id="expand-category-btn" type="button" aria-expanded="false" aria-controls="category-panel">
+        Expand Categories
+      </button>
+
+      <!-- Secondary panel: initially hidden -->
+      <div id="category-panel" class="secondary-panel" style="display:none;">
+        <h3>Categories</h3>
+        <label><input type="checkbox" name="cat" value="phones"> Phones</label>
+        <label><input type="checkbox" name="cat" value="tablets"> Tablets</label>
+      </div>
+    </div>
+
+    <!-- Product grid with lazy images -->
+    <section class="catalog-grid">
+      <article class="product-card">
+        <img id="catalog-lazy-img-1"
+             class="lazy-load"
+             src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23eee'/%3E%3C/svg%3E"
+             data-src="/assets/product-thumb.svg"
+             alt="Product 1">
+        <h3>Refurbished Phone A</h3>
+      </article>
+    </section>
+  </main>
+
+  <script src="/assets/pipeline.js"></script>
+  <script>
+    const filterBtn = document.getElementById('filter-btn');
+    const filterPanel = document.getElementById('filter-panel');
+    const expandBtn = document.getElementById('expand-category-btn');
+    const categoryPanel = document.getElementById('category-panel');
+
+    filterBtn.addEventListener('click', () => {
+      const isHidden = filterPanel.style.display === 'none';
+      filterPanel.style.display = isHidden ? 'block' : 'none';
+      filterBtn.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    expandBtn.addEventListener('click', () => {
+      const isHidden = categoryPanel.style.display === 'none';
+      categoryPanel.style.display = isHidden ? 'block' : 'none';
+      expandBtn.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    // Lazy load
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        document.querySelectorAll('.lazy-load[data-src]').forEach(img => {
+          img.src = img.dataset.src;
+          img.classList.add('loaded');
+        });
+      }, 60);
+    });
+  </script>
+</body>
+</html>
